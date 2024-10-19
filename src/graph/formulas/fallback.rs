@@ -120,7 +120,7 @@ where
         component_id: u64,
     ) -> Result<Option<Expr>, Error> {
         let component = self.graph.component(component_id)?;
-        if !component.is_battery_inverter()
+        if !component.is_battery_inverter(&self.graph.config)
             && !component.is_chp()
             && !component.is_pv_inverter()
             && !component.is_ev_charger()

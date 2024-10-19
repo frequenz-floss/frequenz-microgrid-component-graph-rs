@@ -71,7 +71,7 @@ where
                     "ComponentCategory not specified for component: {cid}"
                 )));
             }
-            if component.is_unspecified_inverter() {
+            if component.is_unspecified_inverter(config) {
                 return Err(Error::invalid_component(format!(
                     "InverterType not specified for inverter: {cid}"
                 )));
@@ -163,12 +163,27 @@ mod tests {
                 == Error::invalid_component("ComponentCategory not specified for component: 8")));
 
         builder.pop_component();
-        builder.add_component(ComponentCategory::Inverter(InverterType::Unspecified));
+        let unspec_inv =
+            builder.add_component(ComponentCategory::Inverter(InverterType::Unspecified));
+        builder.connect(grid_meter, unspec_inv);
+
+        // With default config, unspecified inverter types are not accepted.
         assert!(builder.build(None).is_err_and(
             |e| e == Error::invalid_component("InverterType not specified for inverter: 9")
         ));
+        // With `allow_unspecified_inverters=true`, unspecified inverter types
+        // are treated as battery inverters.
+        let unspec_inv_config = ComponentGraphConfig {
+            allow_unspecified_inverters: true,
+        };
 
-        builder.pop_component();
+        assert!(builder.build(Some(unspec_inv_config.clone())).is_ok());
+
+        assert!(builder
+            .pop_component()
+            .unwrap()
+            .is_battery_inverter(&unspec_inv_config));
+        builder.pop_connection();
         builder.add_component(ComponentCategory::Grid);
         assert!(builder
             .build(None)

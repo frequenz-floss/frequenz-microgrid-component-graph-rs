@@ -109,13 +109,13 @@ impl ComponentGraphBuilder {
     }
 
     /// Pops the last component added to the graph.
-    pub(super) fn pop_component(&mut self) {
-        self.components.pop();
+    pub(super) fn pop_component(&mut self) -> Option<TestComponent> {
+        self.components.pop()
     }
 
     /// Pops the last connection added to the graph.
-    pub(super) fn pop_connection(&mut self) {
-        self.connections.pop();
+    pub(super) fn pop_connection(&mut self) -> Option<TestConnection> {
+        self.connections.pop()
     }
 
     /// Adds a grid component to the graph and returns its handle.
