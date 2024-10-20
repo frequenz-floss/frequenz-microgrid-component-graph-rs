@@ -57,6 +57,10 @@ impl Edge for TestConnection {
 pub(super) struct ComponentHandle(u64);
 
 impl ComponentHandle {
+    pub(super) fn new(id: u64) -> Self {
+        ComponentHandle(id)
+    }
+
     /// Returns the component ID of the component.
     pub(super) fn component_id(&self) -> u64 {
         self.0
@@ -90,6 +94,28 @@ impl ComponentGraphBuilder {
             .push(TestComponent::new(id, category.clone()));
         let handle = ComponentHandle(id);
         handle
+    }
+
+    /// Adds a component with the given id to the graph and returns its handle.
+    pub(super) fn add_component_with_id(
+        &mut self,
+        id: u64,
+        category: ComponentCategory,
+    ) -> ComponentHandle {
+        self.components
+            .push(TestComponent::new(id, category.clone()));
+        let handle = ComponentHandle(id);
+        handle
+    }
+
+    /// Pops the last component added to the graph.
+    pub(super) fn pop_component(&mut self) {
+        self.components.pop();
+    }
+
+    /// Pops the last connection added to the graph.
+    pub(super) fn pop_connection(&mut self) {
+        self.connections.pop();
     }
 
     /// Adds a grid component to the graph and returns its handle.
