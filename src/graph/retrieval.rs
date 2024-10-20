@@ -286,7 +286,7 @@ mod tests {
 
         assert_eq!(meter_bat_chain.component_id(), 2);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         assert_eq!(
             graph
                 .siblings_from_predecessors(3)
@@ -337,7 +337,7 @@ mod tests {
         builder.connect(grid_meter, dangling_meter);
         assert_eq!(dangling_meter.component_id(), 9);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         assert_eq!(
             graph
                 .siblings_from_predecessors(8)
