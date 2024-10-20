@@ -175,6 +175,7 @@ mod tests {
         // are treated as battery inverters.
         let unspec_inv_config = ComponentGraphConfig {
             allow_unspecified_inverters: true,
+            ..Default::default()
         };
 
         assert!(builder.build(Some(unspec_inv_config.clone())).is_ok());
