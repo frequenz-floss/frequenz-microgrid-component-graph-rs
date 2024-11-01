@@ -77,7 +77,10 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.grid_formula()?;
-        assert_eq!(formula, "#1 + #5 + COALESCE(#6, #7) + COALESCE(#9, #10)");
+        assert_eq!(
+            formula,
+            "#1 + #5 + COALESCE(#6, #7, 0.0) + COALESCE(#9, #10, 0.0)"
+        );
 
         // Add a PV inverter to the grid, without a meter.
         let pv_inverter = builder.solar_inverter();
@@ -89,7 +92,7 @@ mod tests {
         let formula = graph.grid_formula()?;
         assert_eq!(
             formula,
-            "#1 + #5 + COALESCE(#6, #7) + COALESCE(#9, #10) + #11"
+            "#1 + #5 + COALESCE(#6, #7, 0.0) + COALESCE(#9, #10, 0.0) + COALESCE(#11, 0.0)"
         );
 
         Ok(())

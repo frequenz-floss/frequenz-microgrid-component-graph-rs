@@ -109,7 +109,7 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.battery_formula(None)?;
-        assert_eq!(formula, "COALESCE(#3, #2)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0)");
 
         // Add a second battery meter with one inverter and two batteries.
         let meter_bat_chain = builder.meter_bat_chain(1, 2);
@@ -119,18 +119,18 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.battery_formula(None)?;
-        assert_eq!(formula, "COALESCE(#3, #2) + COALESCE(#6, #5)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0) + COALESCE(#6, #5, 0.0)");
 
         let formula = graph.battery_formula(Some(BTreeSet::from([4])))?;
-        assert_eq!(formula, "COALESCE(#3, #2)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0)");
 
         let formula = graph.battery_formula(Some(BTreeSet::from([7, 8])))?;
-        assert_eq!(formula, "COALESCE(#6, #5)");
+        assert_eq!(formula, "COALESCE(#6, #5, 0.0)");
 
         let formula = graph
             .battery_formula(Some(BTreeSet::from([4, 8, 7])))
             .unwrap();
-        assert_eq!(formula, "COALESCE(#3, #2) + COALESCE(#6, #5)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0) + COALESCE(#6, #5, 0.0)");
 
         // Add a third battery meter with two inverters with two connected batteries.
         let meter_bat_chain = builder.meter_bat_chain(2, 2);
@@ -142,13 +142,20 @@ mod tests {
         let formula = graph.battery_formula(None)?;
         assert_eq!(
             formula,
-            "COALESCE(#3, #2) + COALESCE(#6, #5) + COALESCE(#11 + #10, #9)"
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#11 + #10, #9, COALESCE(#11, 0.0) + COALESCE(#10, 0.0))"
+            )
         );
 
         let formula = graph
             .battery_formula(Some(BTreeSet::from([12, 13])))
             .unwrap();
-        assert_eq!(formula, "COALESCE(#11 + #10, #9)");
+        assert_eq!(
+            formula,
+            "COALESCE(#11 + #10, #9, COALESCE(#11, 0.0) + COALESCE(#10, 0.0))"
+        );
 
         // add a PV meter with two PV inverters.
         let meter_pv_chain = builder.meter_pv_chain(2);
@@ -160,7 +167,11 @@ mod tests {
         let formula = graph.battery_formula(None)?;
         assert_eq!(
             formula,
-            "COALESCE(#3, #2) + COALESCE(#6, #5) + COALESCE(#11 + #10, #9)"
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#11 + #10, #9, COALESCE(#11, 0.0) + COALESCE(#10, 0.0))"
+            )
         );
 
         // add a battery meter with two inverters that have their own batteries.
@@ -182,26 +193,38 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "COALESCE(#3, #2) + COALESCE(#6, #5) + ",
-                "COALESCE(#11 + #10, #9) + COALESCE(#20 + #18, #17)"
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#11 + #10, #9, COALESCE(#11, 0.0) + COALESCE(#10, 0.0)) + ",
+                "COALESCE(#20 + #18, #17, COALESCE(#20, 0.0) + COALESCE(#18, 0.0))"
             )
         );
 
         let formula = graph
             .battery_formula(Some(BTreeSet::from([19, 21])))
             .unwrap();
-        assert_eq!(formula, "COALESCE(#20 + #18, #17)");
+        assert_eq!(
+            formula,
+            "COALESCE(#20 + #18, #17, COALESCE(#20, 0.0) + COALESCE(#18, 0.0))"
+        );
 
         let formula = graph.battery_formula(Some(BTreeSet::from([19]))).unwrap();
-        assert_eq!(formula, "#18");
+        assert_eq!(formula, "COALESCE(#18, 0.0)");
 
         let formula = graph.battery_formula(Some(BTreeSet::from([21]))).unwrap();
-        assert_eq!(formula, "#20");
+        assert_eq!(formula, "COALESCE(#20, 0.0)");
 
         let formula = graph
             .battery_formula(Some(BTreeSet::from([4, 12, 13, 19])))
             .unwrap();
-        assert_eq!(formula, "COALESCE(#3, #2) + COALESCE(#11 + #10, #9) + #18");
+        assert_eq!(
+            formula,
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#11 + #10, #9, COALESCE(#11, 0.0) + COALESCE(#10, 0.0)) + ",
+                "COALESCE(#18, 0.0)"
+            )
+        );
 
         // Failure cases:
         let formula = graph.battery_formula(Some(BTreeSet::from([17])));

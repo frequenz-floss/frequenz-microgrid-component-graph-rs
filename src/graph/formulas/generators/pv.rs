@@ -88,7 +88,7 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.pv_formula(None)?;
-        assert_eq!(formula, "COALESCE(#3, #2)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0)");
 
         // Add a battery meter with one inverter and two batteries.
         let meter_bat_chain = builder.meter_bat_chain(1, 2);
@@ -98,7 +98,7 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.pv_formula(None)?;
-        assert_eq!(formula, "COALESCE(#3, #2)");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0)");
 
         // Add a PV meter with two PV inverters.
         let meter_pv_chain = builder.meter_pv_chain(2);
@@ -108,10 +108,16 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.pv_formula(None)?;
-        assert_eq!(formula, "COALESCE(#3, #2) + COALESCE(#10 + #9, #8)");
+        assert_eq!(
+            formula,
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#10 + #9, #8, COALESCE(#10, 0.0) + COALESCE(#9, 0.0))"
+            )
+        );
 
         let formula = graph.pv_formula(Some(BTreeSet::from([10, 3]))).unwrap();
-        assert_eq!(formula, "COALESCE(#3, #2) + #10");
+        assert_eq!(formula, "COALESCE(#3, #2, 0.0) + COALESCE(#10, 0.0)");
 
         // add a meter direct to the grid with three PV inverters
         let meter_pv_chain = builder.meter_pv_chain(3);
@@ -123,7 +129,15 @@ mod tests {
         let formula = graph.pv_formula(None)?;
         assert_eq!(
             formula,
-            "COALESCE(#3, #2) + COALESCE(#10 + #9, #8) + COALESCE(#14 + #13 + #12, #11)",
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#10 + #9, #8, COALESCE(#10, 0.0) + COALESCE(#9, 0.0)) + ",
+                "COALESCE(",
+                "#14 + #13 + #12, ",
+                "#11, ",
+                "COALESCE(#14, 0.0) + COALESCE(#13, 0.0) + COALESCE(#12, 0.0)",
+                ")"
+            ),
         );
 
         let formula = graph
@@ -131,7 +145,12 @@ mod tests {
             .unwrap();
         assert_eq!(
             formula,
-            "COALESCE(#3, #2) + COALESCE(#10 + #9, #8) + #12 + #13"
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#10 + #9, #8, COALESCE(#10, 0.0) + COALESCE(#9, 0.0)) + ",
+                "COALESCE(#12, 0.0) + ",
+                "COALESCE(#13, 0.0)"
+            )
         );
 
         let formula = graph
@@ -139,11 +158,19 @@ mod tests {
             .unwrap();
         assert_eq!(
             formula,
-            "COALESCE(#3, #2) + COALESCE(#10 + #9, #8) + COALESCE(#14 + #13 + #12, #11)"
+            concat!(
+                "COALESCE(#3, #2, 0.0) + ",
+                "COALESCE(#10 + #9, #8, COALESCE(#10, 0.0) + COALESCE(#9, 0.0)) + ",
+                "COALESCE(",
+                "#14 + #13 + #12, ",
+                "#11, ",
+                "COALESCE(#14, 0.0) + COALESCE(#13, 0.0) + COALESCE(#12, 0.0)",
+                ")"
+            )
         );
 
         let formula = graph.pv_formula(Some(BTreeSet::from([10, 14]))).unwrap();
-        assert_eq!(formula, "#10 + #14");
+        assert_eq!(formula, "COALESCE(#10, 0.0) + COALESCE(#14, 0.0)");
 
         // Failure cases:
         let formula = graph.pv_formula(Some(BTreeSet::from([8])));

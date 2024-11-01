@@ -85,7 +85,10 @@ mod tests {
 
         let graph = builder.build()?;
         let formula = graph.producer_formula()?;
-        assert_eq!(formula, "MIN(0.0, COALESCE(#4 + #3, #2))");
+        assert_eq!(
+            formula,
+            "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)))"
+        );
 
         // Add a CHP meter to the grid with a CHP behind it.
         let meter_chp_chain = builder.meter_chp_chain(1);
@@ -95,7 +98,10 @@ mod tests {
         let formula = graph.producer_formula()?;
         assert_eq!(
             formula,
-            "MIN(0.0, COALESCE(#4 + #3, #2)) + MIN(0.0, COALESCE(#6, #5))"
+            concat!(
+                "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))) + ",
+                "MIN(0.0, COALESCE(#6, #5, 0.0))"
+            )
         );
 
         // Add a CHP to the grid, without a meter.
@@ -106,7 +112,11 @@ mod tests {
         let formula = graph.producer_formula()?;
         assert_eq!(
             formula,
-            "MIN(0.0, COALESCE(#4 + #3, #2)) + MIN(0.0, COALESCE(#6, #5)) + MIN(0.0, #7)"
+            concat!(
+                "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))) + ",
+                "MIN(0.0, COALESCE(#6, #5, 0.0)) + ",
+                "MIN(0.0, COALESCE(#7, 0.0))"
+            )
         );
 
         // Add a PV inverter to the grid_meter.
@@ -118,8 +128,10 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(0.0, COALESCE(#4 + #3, #2)) + MIN(0.0, COALESCE(#6, #5)) + ",
-                "MIN(0.0, #7) + MIN(0.0, #8)"
+                "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))) + ",
+                "MIN(0.0, COALESCE(#6, #5, 0.0)) + ",
+                "MIN(0.0, COALESCE(#7, 0.0)) + ",
+                "MIN(0.0, COALESCE(#8, 0.0))"
             )
         );
 
@@ -132,8 +144,10 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(0.0, COALESCE(#4 + #3, #2)) + MIN(0.0, COALESCE(#6, #5)) + ",
-                "MIN(0.0, #7) + MIN(0.0, #8)"
+                "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))) + ",
+                "MIN(0.0, COALESCE(#6, #5, 0.0)) + ",
+                "MIN(0.0, COALESCE(#7, 0.0)) + ",
+                "MIN(0.0, COALESCE(#8, 0.0))"
             )
         );
 
@@ -150,8 +164,12 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(0.0, COALESCE(#4 + #3, #2)) + MIN(0.0, COALESCE(#6, #5)) + ",
-                "MIN(0.0, #7) + MIN(0.0, #8) + MIN(0.0, #13) + MIN(0.0, #14)"
+                "MIN(0.0, COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))) + ",
+                "MIN(0.0, COALESCE(#6, #5, 0.0)) + ",
+                "MIN(0.0, COALESCE(#7, 0.0)) + ",
+                "MIN(0.0, COALESCE(#8, 0.0)) + ",
+                "MIN(0.0, COALESCE(#13, 0.0)) + ",
+                "MIN(0.0, COALESCE(#14, 0.0))"
             )
         );
 

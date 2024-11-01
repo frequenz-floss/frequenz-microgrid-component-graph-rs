@@ -165,7 +165,7 @@ mod tests {
         // battery inverter from the battery meter.
         assert_eq!(
             formula,
-            "MAX(0.0, #1 - COALESCE(#2, #3)) + COALESCE(MAX(0.0, #2 - #3), 0.0)"
+            "MAX(0.0, #1 - COALESCE(#2, #3, 0.0)) + COALESCE(MAX(0.0, #2 - #3), 0.0)"
         );
 
         // Add a solar meter with two solar inverters to the grid meter.
@@ -180,7 +180,10 @@ mod tests {
             formula,
             concat!(
                 // difference of grid meter from all its suceessors
-                "MAX(0.0, #1 - COALESCE(#2, #3) - COALESCE(#5, #7 + #6)) + ",
+                "MAX(",
+                "0.0, ",
+                "#1 - COALESCE(#2, #3, 0.0) - COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0))",
+                ") + ",
                 // difference of battery meter from battery inverter and pv
                 // meter from the two pv inverters.
                 "COALESCE(MAX(0.0, #2 - #3), 0.0) + COALESCE(MAX(0.0, #5 - #6 - #7), 0.0)",
@@ -210,7 +213,11 @@ mod tests {
             concat!(
                 // difference of grid meter from all its suceessors
                 "MAX(0.0, ",
-                "#1 - COALESCE(#2, #3) - COALESCE(#5, #7 + #6) - COALESCE(#11, #10 + #9 + #8)) + ",
+                "#1 - ",
+                "COALESCE(#2, #3, 0.0) - ",
+                "COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)) - ",
+                "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0))",
+                ") + ",
                 // difference of battery meter from battery inverter and pv
                 // meter from the two pv inverters.
                 "COALESCE(MAX(0.0, #2 - #3), 0.0) + COALESCE(MAX(0.0, #5 - #6 - #7), 0.0) + ",
@@ -235,8 +242,11 @@ mod tests {
             concat!(
                 // difference of grid meter from all its suceessors
                 "MAX(0.0, ",
-                "#1 - COALESCE(#2, #3) - COALESCE(#5, #7 + #6) - COALESCE(#11, #10 + #9 + #8) - ",
-                "COALESCE(#12, #13)",
+                "#1 - ",
+                "COALESCE(#2, #3, 0.0) - ",
+                "COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)) - ",
+                "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0)) - ",
+                "COALESCE(#12, #13, 0.0)",
                 ") + ",
                 // difference of battery meter from battery inverter and pv
                 // meter from the two pv inverters.
@@ -376,7 +386,7 @@ mod tests {
             formula,
             concat!(
                 // difference of pv powers from first two grid meters
-                "MAX(0.0, #1 + #2 - COALESCE(#4, #5) - COALESCE(#6, #7)) + ",
+                "MAX(0.0, #1 + #2 - COALESCE(#4, #5, 0.0) - COALESCE(#6, #7, 0.0)) + ",
                 // third grid meter still dangling
                 "MAX(0.0, #3) + ",
                 // difference of solar inverters from their meters
@@ -399,7 +409,7 @@ mod tests {
             formula,
             concat!(
                 // difference of pv powers from first two grid meters and meter#8
-                "MAX(0.0, #1 + #8 + #2 - COALESCE(#4, #5) - COALESCE(#6, #7)) + ",
+                "MAX(0.0, #1 + #8 + #2 - COALESCE(#4, #5, 0.0) - COALESCE(#6, #7, 0.0)) + ",
                 // difference of meter#8 from third grid meter
                 "MAX(0.0, #3 - #8) + ",
                 // difference of solar inverters from their meters
@@ -419,7 +429,7 @@ mod tests {
                 // difference of pv and battery powers from first two grid
                 // meters and meter#8
                 "MAX(0.0, ",
-                "#1 + #8 + #2 - COALESCE(#4, #5) - COALESCE(#6, #7) - COALESCE(#9, #10)",
+                "#1 + #8 + #2 - COALESCE(#4, #5, 0.0) - COALESCE(#6, #7, 0.0) - COALESCE(#9, #10, 0.0)",
                 ") + ",
                 // difference of meter#8 from third grid meter
                 "MAX(0.0, #3 - #8) + ",
