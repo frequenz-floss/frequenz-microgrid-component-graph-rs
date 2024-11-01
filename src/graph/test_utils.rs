@@ -30,10 +30,6 @@ impl Node for TestComponent {
     fn category(&self) -> ComponentCategory {
         self.1.clone()
     }
-
-    fn is_supported(&self) -> bool {
-        true
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

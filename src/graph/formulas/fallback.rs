@@ -65,12 +65,7 @@ where
             return Ok(None);
         }
 
-        if !self.graph.has_successors(component_id)?
-            || !self
-                .graph
-                .successors(component_id)?
-                .all(|x| x.is_supported())
-        {
+        if !self.graph.has_successors(component_id)? {
             return Ok(Some(Expr::component(component_id)));
         }
 
