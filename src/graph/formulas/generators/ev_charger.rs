@@ -29,7 +29,12 @@ where
         let ev_charger_ids = if let Some(ev_charger_ids) = ev_charger_ids {
             ev_charger_ids
         } else {
-            graph.find_all(graph.root_id, |node| node.is_ev_charger(), false)?
+            graph.find_all(
+                graph.root_id,
+                |node| node.is_ev_charger(),
+                petgraph::Direction::Outgoing,
+                false,
+            )?
         };
         Ok(Self {
             graph,

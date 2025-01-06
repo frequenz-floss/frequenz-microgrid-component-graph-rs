@@ -29,7 +29,12 @@ where
         let chp_ids = if let Some(chp_ids) = chp_ids {
             chp_ids
         } else {
-            graph.find_all(graph.root_id, |node| node.is_chp(), false)?
+            graph.find_all(
+                graph.root_id,
+                |node| node.is_chp(),
+                petgraph::Direction::Outgoing,
+                false,
+            )?
         };
         Ok(Self { graph, chp_ids })
     }

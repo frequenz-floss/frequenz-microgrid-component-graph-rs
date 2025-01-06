@@ -29,7 +29,12 @@ where
         let pv_inverter_ids = if let Some(pv_inverter_ids) = pv_inverter_ids {
             pv_inverter_ids
         } else {
-            graph.find_all(graph.root_id, |node| node.is_pv_inverter(), false)?
+            graph.find_all(
+                graph.root_id,
+                |node| node.is_pv_inverter(),
+                petgraph::Direction::Outgoing,
+                false,
+            )?
         };
         Ok(Self {
             graph,

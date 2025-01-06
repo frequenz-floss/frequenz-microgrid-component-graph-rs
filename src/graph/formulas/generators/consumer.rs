@@ -24,7 +24,12 @@ where
 {
     pub fn try_new(graph: &'a ComponentGraph<N, E>) -> Result<Self, Error> {
         Ok(Self {
-            unvisited_meters: graph.find_all(graph.root_id, |node| node.is_meter(), true)?,
+            unvisited_meters: graph.find_all(
+                graph.root_id,
+                |node| node.is_meter(),
+                petgraph::Direction::Outgoing,
+                true,
+            )?,
             graph,
         })
     }

@@ -29,7 +29,12 @@ where
         let inverter_ids = if let Some(battery_ids) = battery_ids {
             Self::find_inverter_ids(graph, &battery_ids)?
         } else {
-            graph.find_all(graph.root_id, |node| node.is_battery_inverter(), false)?
+            graph.find_all(
+                graph.root_id,
+                |node| node.is_battery_inverter(),
+                petgraph::Direction::Outgoing,
+                false,
+            )?
         };
         Ok(Self {
             graph,

@@ -108,7 +108,7 @@ where
     }
 
     /// Returns a set of all components that match the given predicate, starting
-    /// from the component with the given `component_id`.
+    /// from the component with the given `component_id`, in the given direction.
     ///
     /// If `follow_after_match` is `true`, the search continues deeper beyond
     /// the matching components.
@@ -116,6 +116,7 @@ where
         &self,
         from: u64,
         mut pred: impl FnMut(&N) -> bool,
+        direction: petgraph::Direction,
         follow_after_match: bool,
     ) -> Result<BTreeSet<u64>, Error> {
         let index = self.node_indices.get(&from).ok_or_else(|| {
@@ -133,9 +134,7 @@ where
                 }
             }
 
-            let neighbors = self
-                .graph
-                .neighbors_directed(index, petgraph::Direction::Outgoing);
+            let neighbors = self.graph.neighbors_directed(index, direction);
             stack.extend(neighbors);
         }
 
@@ -353,15 +352,26 @@ mod tests {
         let (components, connections) = nodes_and_edges();
         let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
 
-        let found = graph.find_all(graph.root_id, |x| x.is_meter(), false)?;
+        let found = graph.find_all(
+            graph.root_id,
+            |x| x.is_meter(),
+            petgraph::Direction::Outgoing,
+            false,
+        )?;
         assert_eq!(found, [2].iter().cloned().collect());
 
-        let found = graph.find_all(graph.root_id, |x| x.is_meter(), true)?;
+        let found = graph.find_all(
+            graph.root_id,
+            |x| x.is_meter(),
+            petgraph::Direction::Outgoing,
+            true,
+        )?;
         assert_eq!(found, [2, 3, 6].iter().cloned().collect());
 
         let found = graph.find_all(
             graph.root_id,
             |x| !x.is_grid() && !graph.is_component_meter(x.component_id()).unwrap_or(false),
+            petgraph::Direction::Outgoing,
             true,
         )?;
         assert_eq!(found, [2, 4, 5, 7, 8].iter().cloned().collect());
@@ -369,6 +379,7 @@ mod tests {
         let found = graph.find_all(
             6,
             |x| !x.is_grid() && !graph.is_component_meter(x.component_id()).unwrap_or(false),
+            petgraph::Direction::Outgoing,
             true,
         )?;
         assert_eq!(found, [7, 8].iter().cloned().collect());
@@ -376,14 +387,20 @@ mod tests {
         let found = graph.find_all(
             graph.root_id,
             |x| !x.is_grid() && !graph.is_component_meter(x.component_id()).unwrap_or(false),
+            petgraph::Direction::Outgoing,
             false,
         )?;
         assert_eq!(found, [2].iter().cloned().collect());
 
-        let found = graph.find_all(graph.root_id, |_| true, false)?;
+        let found = graph.find_all(
+            graph.root_id,
+            |_| true,
+            petgraph::Direction::Outgoing,
+            false,
+        )?;
         assert_eq!(found, [1].iter().cloned().collect());
 
-        let found = graph.find_all(3, |_| true, true)?;
+        let found = graph.find_all(3, |_| true, petgraph::Direction::Outgoing, true)?;
         assert_eq!(found, [3, 4, 5].iter().cloned().collect());
 
         Ok(())

@@ -41,6 +41,7 @@ where
                     || node.is_pv_inverter()
                     || node.is_chp()
             },
+            petgraph::Direction::Outgoing,
             false,
         )? {
             let comp_expr = Self::min_zero(self.graph.fallback_expr([component_id], false)?);
