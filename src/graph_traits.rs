@@ -116,10 +116,6 @@ impl frequenz_microgrid_component_graph::Node for common::v1::microgrid::compone
             pb::ComponentCategory::Hvac => gr::ComponentCategory::Hvac,
         }
     }
-
-    fn is_supported(&self) -> bool {
-        self.status != common::v1::microgrid::components::ComponentStatus::Inactive as i32
-    }
 }
 ```
 
@@ -130,8 +126,6 @@ pub trait Node {
     fn component_id(&self) -> u64;
     /// Returns the category of the category.
     fn category(&self) -> ComponentCategory;
-    /// Returns true if the component can be read from and/or controlled.
-    fn is_supported(&self) -> bool;
 }
 
 /**
