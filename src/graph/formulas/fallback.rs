@@ -45,6 +45,12 @@ where
 {
     fn generate(&self, mut component_ids: BTreeSet<u64>) -> Result<Expr, Error> {
         let mut formula = None::<Expr>;
+        if self.graph.config.disable_fallback_components {
+            while let Some(component_id) = component_ids.pop_first() {
+                formula = Self::add_to_option(formula, Expr::component(component_id));
+            }
+            return formula.ok_or(Error::internal("No components to generate formula."));
+        }
         while let Some(component_id) = component_ids.pop_first() {
             if let Some(expr) = self.meter_fallback(component_id)? {
                 formula = Self::add_to_option(formula, expr);
@@ -169,7 +175,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{graph::test_utils::ComponentGraphBuilder, Error};
+    use crate::{graph::test_utils::ComponentGraphBuilder, ComponentGraphConfig, Error};
 
     #[test]
     fn test_meter_fallback() -> Result<(), Error> {
@@ -196,6 +202,19 @@ mod tests {
 
         let expr = graph.fallback_expr(vec![3], true)?;
         assert_eq!(expr.to_string(), "COALESCE(#2, #3, 0.0)");
+
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let expr = graph.fallback_expr(vec![1, 2], false)?;
+        assert_eq!(expr.to_string(), "#1 + #2");
+
+        let expr = graph.fallback_expr(vec![1, 2], true)?;
+        assert_eq!(expr.to_string(), "#1 + #2");
+
+        let expr = graph.fallback_expr(vec![3], true)?;
+        assert_eq!(expr.to_string(), "#3");
 
         // Add a battery meter with three inverter and three batteries
         let meter_bat_chain = builder.meter_bat_chain(3, 3);
@@ -240,6 +259,22 @@ mod tests {
             expr.to_string(),
             "COALESCE(#2, #3, 0.0) + COALESCE(#7, 0.0) + COALESCE(#8, 0.0)"
         );
+
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let expr = graph.fallback_expr(vec![3, 5], false)?;
+        assert_eq!(expr.to_string(), "#3 + #5");
+
+        let expr = graph.fallback_expr(vec![2, 5], true)?;
+        assert_eq!(expr.to_string(), "#2 + #5");
+
+        let expr = graph.fallback_expr(vec![2, 6, 7, 8], true)?;
+        assert_eq!(expr.to_string(), "#2 + #6 + #7 + #8");
+
+        let expr = graph.fallback_expr(vec![2, 7, 8], true)?;
+        assert_eq!(expr.to_string(), "#2 + #7 + #8");
 
         let meter = builder.meter();
         let chp = builder.chp();

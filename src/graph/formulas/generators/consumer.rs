@@ -126,7 +126,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::test_utils::ComponentGraphBuilder;
+    use crate::{graph::test_utils::ComponentGraphBuilder, ComponentGraphConfig};
 
     #[test]
     fn test_zero_consumers() -> Result<(), Error> {
@@ -223,6 +223,23 @@ mod tests {
                 "COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)) - ",
                 "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0))",
                 ") + ",
+                // difference of battery meter from battery inverter and pv
+                // meter from the two pv inverters.
+                "COALESCE(MAX(0.0, #2 - #3), 0.0) + COALESCE(MAX(0.0, #5 - #6 - #7), 0.0) + ",
+                // difference of "mixed" meter from its successors.
+                "COALESCE(MAX(0.0, #11 - #8 - #9 - #10), 0.0)"
+            )
+        );
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let formula = graph.consumer_formula()?;
+        assert_eq!(
+            formula,
+            concat!(
+                // difference of grid meter from all its suceessors (without fallbacks)
+                "MAX(0.0, #1 - #2 - #5 - #11) + ",
                 // difference of battery meter from battery inverter and pv
                 // meter from the two pv inverters.
                 "COALESCE(MAX(0.0, #2 - #3), 0.0) + COALESCE(MAX(0.0, #5 - #6 - #7), 0.0) + ",

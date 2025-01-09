@@ -19,4 +19,8 @@ pub struct ComponentGraphConfig {
     /// inverters that have `InverterType::Unspecified` will be assumed to be
     /// Battery inverters.
     pub allow_unspecified_inverters: bool,
+
+    /// Whether to disable fallback components in generated formulas.  When this
+    /// is `true`, the formulas will not include fallback components.
+    pub disable_fallback_components: bool,
 }
