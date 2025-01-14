@@ -49,7 +49,7 @@ where
         let other_grid_successors = self
             .graph
             .successors(self.graph.root_id)?
-            .filter(|s| !s.is_meter() && !s.is_battery_inverter())
+            .filter(|s| !s.is_meter() && !s.is_battery_inverter(&self.graph.config))
             .map(|s| self.component_consumption(s.component_id()))
             .reduce(|a, b| Ok(a? + b?));
 
@@ -126,7 +126,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::test_utils::ComponentGraphBuilder;
+    use crate::{graph::test_utils::ComponentGraphBuilder, ComponentGraphConfig};
 
     #[test]
     fn test_zero_consumers() -> Result<(), Error> {
@@ -137,7 +137,7 @@ mod tests {
         let inv_bat_chain = builder.inv_bat_chain(1);
         builder.connect(grid, inv_bat_chain);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(formula, "0.0");
 
@@ -153,7 +153,7 @@ mod tests {
         let grid_meter = builder.meter();
         builder.connect(grid, grid_meter);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(formula, "MAX(0.0, #1)");
 
@@ -164,7 +164,7 @@ mod tests {
 
         assert_eq!(meter_bat_chain.component_id(), 2);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         // Formula subtracts the battery meter from the grid meter, and the
         // battery inverter from the battery meter.
@@ -179,7 +179,7 @@ mod tests {
 
         assert_eq!(meter_pv_chain.component_id(), 5);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -211,7 +211,7 @@ mod tests {
         assert_eq!(ev_charger.component_id(), 10);
         assert_eq!(meter.component_id(), 11);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -230,6 +230,23 @@ mod tests {
                 "COALESCE(MAX(0.0, #11 - #8 - #9 - #10), 0.0)"
             )
         );
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let formula = graph.consumer_formula()?;
+        assert_eq!(
+            formula,
+            concat!(
+                // difference of grid meter from all its suceessors (without fallbacks)
+                "MAX(0.0, #1 - #2 - #5 - #11) + ",
+                // difference of battery meter from battery inverter and pv
+                // meter from the two pv inverters.
+                "COALESCE(MAX(0.0, #2 - #3), 0.0) + COALESCE(MAX(0.0, #5 - #6 - #7), 0.0) + ",
+                // difference of "mixed" meter from its successors.
+                "COALESCE(MAX(0.0, #11 - #8 - #9 - #10), 0.0)"
+            )
+        );
 
         // add a battery chain to the grid meter and a dangling meter to the grid.
         let meter_bat_chain = builder.meter_bat_chain(1, 1);
@@ -240,7 +257,7 @@ mod tests {
         assert_eq!(meter_bat_chain.component_id(), 12);
         assert_eq!(dangling_meter.component_id(), 15);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -279,7 +296,7 @@ mod tests {
 
         assert_eq!(meter_bat_chain.component_id(), 1);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         // Formula subtracts inverter from battery meter, or shows zero
         // consumption if either of the components have no data.
@@ -297,7 +314,7 @@ mod tests {
         assert_eq!(dangling_meter_1.component_id(), 6);
         assert_eq!(dangling_meter_2.component_id(), 7);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -316,7 +333,7 @@ mod tests {
         let inv_bat_chain = builder.inv_bat_chain(1);
         builder.connect(grid, inv_bat_chain);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -340,7 +357,7 @@ mod tests {
         assert_eq!(pv_inv.component_id(), 10);
         assert_eq!(chp.component_id(), 11);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -370,7 +387,7 @@ mod tests {
         builder.connect(grid, grid_meter_2);
         builder.connect(grid, grid_meter_3);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(formula, "MAX(0.0, #1) + MAX(0.0, #2) + MAX(0.0, #3)");
 
@@ -385,7 +402,7 @@ mod tests {
         assert_eq!(meter_pv_chain_1.component_id(), 4);
         assert_eq!(meter_pv_chain_2.component_id(), 6);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -408,7 +425,7 @@ mod tests {
 
         assert_eq!(meter.component_id(), 8);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,
@@ -426,7 +443,7 @@ mod tests {
         let meter_bat_chain = builder.meter_bat_chain(1, 1);
         builder.connect(grid_meter_1, meter_bat_chain);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let formula = graph.consumer_formula()?;
         assert_eq!(
             formula,

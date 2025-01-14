@@ -36,7 +36,7 @@ where
         Ok(self.component(component_id)?.is_meter()
             && self.successors(component_id)?.all(|n| {
                 has_successors = true;
-                n.is_battery_inverter()
+                n.is_battery_inverter(&self.config)
             })
             && has_successors)
     }
@@ -94,6 +94,7 @@ mod tests {
     use crate::error::Error;
     use crate::graph::test_utils::{TestComponent, TestConnection};
     use crate::ComponentCategory;
+    use crate::ComponentGraphConfig;
     use crate::InverterType;
 
     fn nodes_and_edges() -> (Vec<TestComponent>, Vec<TestConnection>) {
@@ -205,7 +206,9 @@ mod tests {
         connections: Vec<TestConnection>,
         filter: impl Fn(&ComponentGraph<TestComponent, TestConnection>, u64) -> Result<bool, Error>,
     ) -> Result<Vec<u64>, Error> {
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let config = ComponentGraphConfig::default();
+
+        let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         let mut found_meters = vec![];
         for comp in graph.components() {

@@ -45,6 +45,12 @@ where
 {
     fn generate(&self, mut component_ids: BTreeSet<u64>) -> Result<Expr, Error> {
         let mut formula = None::<Expr>;
+        if self.graph.config.disable_fallback_components {
+            while let Some(component_id) = component_ids.pop_first() {
+                formula = Self::add_to_option(formula, Expr::component(component_id));
+            }
+            return formula.ok_or(Error::internal("No components to generate formula."));
+        }
         while let Some(component_id) = component_ids.pop_first() {
             if let Some(expr) = self.meter_fallback(component_id)? {
                 formula = Self::add_to_option(formula, expr);
@@ -120,7 +126,7 @@ where
         component_id: u64,
     ) -> Result<Option<Expr>, Error> {
         let component = self.graph.component(component_id)?;
-        if !component.is_battery_inverter()
+        if !component.is_battery_inverter(&self.graph.config)
             && !component.is_chp()
             && !component.is_pv_inverter()
             && !component.is_ev_charger()
@@ -169,7 +175,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{graph::test_utils::ComponentGraphBuilder, Error};
+    use crate::{graph::test_utils::ComponentGraphBuilder, ComponentGraphConfig, Error};
 
     #[test]
     fn test_meter_fallback() -> Result<(), Error> {
@@ -187,7 +193,7 @@ mod tests {
         assert_eq!(grid_meter.component_id(), 1);
         assert_eq!(meter_bat_chain.component_id(), 2);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let expr = graph.fallback_expr(vec![1, 2], false)?;
         assert_eq!(expr.to_string(), "#1 + COALESCE(#3, #2, 0.0)");
 
@@ -197,13 +203,26 @@ mod tests {
         let expr = graph.fallback_expr(vec![3], true)?;
         assert_eq!(expr.to_string(), "COALESCE(#2, #3, 0.0)");
 
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let expr = graph.fallback_expr(vec![1, 2], false)?;
+        assert_eq!(expr.to_string(), "#1 + #2");
+
+        let expr = graph.fallback_expr(vec![1, 2], true)?;
+        assert_eq!(expr.to_string(), "#1 + #2");
+
+        let expr = graph.fallback_expr(vec![3], true)?;
+        assert_eq!(expr.to_string(), "#3");
+
         // Add a battery meter with three inverter and three batteries
         let meter_bat_chain = builder.meter_bat_chain(3, 3);
         builder.connect(grid_meter, meter_bat_chain);
 
         assert_eq!(meter_bat_chain.component_id(), 5);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let expr = graph.fallback_expr(vec![3, 5], false)?;
         assert_eq!(
             expr.to_string(),
@@ -241,6 +260,22 @@ mod tests {
             "COALESCE(#2, #3, 0.0) + COALESCE(#7, 0.0) + COALESCE(#8, 0.0)"
         );
 
+        let graph = builder.build(Some(ComponentGraphConfig {
+            disable_fallback_components: true,
+            ..Default::default()
+        }))?;
+        let expr = graph.fallback_expr(vec![3, 5], false)?;
+        assert_eq!(expr.to_string(), "#3 + #5");
+
+        let expr = graph.fallback_expr(vec![2, 5], true)?;
+        assert_eq!(expr.to_string(), "#2 + #5");
+
+        let expr = graph.fallback_expr(vec![2, 6, 7, 8], true)?;
+        assert_eq!(expr.to_string(), "#2 + #6 + #7 + #8");
+
+        let expr = graph.fallback_expr(vec![2, 7, 8], true)?;
+        assert_eq!(expr.to_string(), "#2 + #7 + #8");
+
         let meter = builder.meter();
         let chp = builder.chp();
         let pv_inverter = builder.solar_inverter();
@@ -252,7 +287,7 @@ mod tests {
         assert_eq!(chp.component_id(), 13);
         assert_eq!(pv_inverter.component_id(), 14);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         let expr = graph.fallback_expr(vec![5, 12], true)?;
         assert_eq!(
             expr.to_string(),

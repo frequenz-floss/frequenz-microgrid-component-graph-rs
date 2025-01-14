@@ -151,6 +151,7 @@ mod tests {
     use crate::graph::test_utils::ComponentGraphBuilder;
     use crate::graph::test_utils::{TestComponent, TestConnection};
     use crate::ComponentCategory;
+    use crate::ComponentGraphConfig;
     use crate::InverterType;
 
     fn nodes_and_edges() -> (Vec<TestComponent>, Vec<TestConnection>) {
@@ -179,8 +180,9 @@ mod tests {
 
     #[test]
     fn test_component() -> Result<(), Error> {
+        let config = ComponentGraphConfig::default();
         let (components, connections) = nodes_and_edges();
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         assert_eq!(
             graph.component(1),
@@ -203,8 +205,9 @@ mod tests {
 
     #[test]
     fn test_components() -> Result<(), Error> {
+        let config = ComponentGraphConfig::default();
         let (components, connections) = nodes_and_edges();
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         assert!(graph.components().eq(&components));
         assert!(graph.components().filter(|x| x.is_battery()).eq(&[
@@ -217,8 +220,9 @@ mod tests {
 
     #[test]
     fn test_connections() -> Result<(), Error> {
+        let config = ComponentGraphConfig::default();
         let (components, connections) = nodes_and_edges();
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         assert!(graph.connections().eq(&connections));
 
@@ -232,8 +236,9 @@ mod tests {
 
     #[test]
     fn test_neighbors() -> Result<(), Error> {
+        let config = ComponentGraphConfig::default();
         let (components, connections) = nodes_and_edges();
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         assert!(graph.predecessors(1).is_ok_and(|x| x.eq(&[])));
 
@@ -281,7 +286,7 @@ mod tests {
 
         assert_eq!(meter_bat_chain.component_id(), 2);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         assert_eq!(
             graph
                 .siblings_from_predecessors(3)
@@ -332,7 +337,7 @@ mod tests {
         builder.connect(grid_meter, dangling_meter);
         assert_eq!(dangling_meter.component_id(), 9);
 
-        let graph = builder.build()?;
+        let graph = builder.build(None)?;
         assert_eq!(
             graph
                 .siblings_from_predecessors(8)
@@ -350,7 +355,11 @@ mod tests {
     #[test]
     fn test_find_all() -> Result<(), Error> {
         let (components, connections) = nodes_and_edges();
-        let graph = ComponentGraph::try_new(components.clone(), connections.clone())?;
+        let graph = ComponentGraph::try_new(
+            components.clone(),
+            connections.clone(),
+            ComponentGraphConfig::default(),
+        )?;
 
         let found = graph.find_all(
             graph.root_id,

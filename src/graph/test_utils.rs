@@ -10,7 +10,8 @@
 //!   graph configurations for use in tests.
 
 use crate::{
-    BatteryType, ComponentCategory, ComponentGraph, Edge, Error, EvChargerType, InverterType, Node,
+    BatteryType, ComponentCategory, ComponentGraph, ComponentGraphConfig, Edge, Error,
+    EvChargerType, InverterType, Node,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -56,6 +57,10 @@ impl Edge for TestConnection {
 pub(super) struct ComponentHandle(u64);
 
 impl ComponentHandle {
+    pub(super) fn new(id: u64) -> Self {
+        ComponentHandle(id)
+    }
+
     /// Returns the component ID of the component.
     pub(super) fn component_id(&self) -> u64 {
         self.0
@@ -89,6 +94,28 @@ impl ComponentGraphBuilder {
             .push(TestComponent::new(id, category.clone()));
         let handle = ComponentHandle(id);
         handle
+    }
+
+    /// Adds a component with the given id to the graph and returns its handle.
+    pub(super) fn add_component_with_id(
+        &mut self,
+        id: u64,
+        category: ComponentCategory,
+    ) -> ComponentHandle {
+        self.components
+            .push(TestComponent::new(id, category.clone()));
+        let handle = ComponentHandle(id);
+        handle
+    }
+
+    /// Pops the last component added to the graph.
+    pub(super) fn pop_component(&mut self) -> Option<TestComponent> {
+        self.components.pop()
+    }
+
+    /// Pops the last connection added to the graph.
+    pub(super) fn pop_connection(&mut self) -> Option<TestConnection> {
+        self.connections.pop()
     }
 
     /// Adds a grid component to the graph and returns its handle.
@@ -204,7 +231,14 @@ impl ComponentGraphBuilder {
 
     /// Builds and returns the component graph from the components and
     /// connections added to the builder.
-    pub(super) fn build(&self) -> Result<ComponentGraph<TestComponent, TestConnection>, Error> {
-        ComponentGraph::try_new(self.components.clone(), self.connections.clone())
+    pub(super) fn build(
+        &self,
+        config: Option<ComponentGraphConfig>,
+    ) -> Result<ComponentGraph<TestComponent, TestConnection>, Error> {
+        ComponentGraph::try_new(
+            self.components.clone(),
+            self.connections.clone(),
+            config.unwrap_or_default(),
+        )
     }
 }
