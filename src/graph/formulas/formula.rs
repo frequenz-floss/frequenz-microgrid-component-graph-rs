@@ -23,6 +23,16 @@ impl Formula {
         Formula { expr }
     }
 
+    /// Returns the formula as a tree, for rendering and highlighting in UIs.
+    ///
+    /// The tree mirrors the formula string exactly: rendering it with the
+    /// formula grammar gives the same string as this formula's `Display`.
+    #[cfg(feature = "explain")]
+    #[must_use]
+    pub fn ast(&self) -> super::explain::FormulaAst {
+        super::explain::FormulaAst::from(&self.expr)
+    }
+
     /// Returns a formula that evaluates to the first of `self` and `other` that
     /// has a value.
     #[must_use]
@@ -80,6 +90,14 @@ impl std::fmt::Display for Formula {
 impl From<Formula> for String {
     fn from(formula: Formula) -> Self {
         formula.expr.to_string()
+    }
+}
+
+/// Serializes as the formula string, matching `Display`.
+#[cfg(feature = "serde")]
+impl serde::Serialize for Formula {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

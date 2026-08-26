@@ -243,6 +243,64 @@ impl Expr {
     }
 }
 
+/// Inspection helpers for `Expr`.
+impl Expr {
+    /// Collects the ids of all components referenced in the expression, in
+    /// order of appearance (duplicates included).
+    pub(crate) fn component_ids(&self) -> Vec<u64> {
+        let mut ids = Vec::new();
+        self.collect_component_ids(&mut ids);
+        ids
+    }
+
+    /// Whether the expression resolves to a value whatever the component
+    /// readings are: a constant, or a chain that ends in one. A component
+    /// reference can be missing, and the arithmetic operators propagate a
+    /// missing operand, so only a `COALESCE` with a resolving parameter
+    /// recovers from one.
+    ///
+    /// Rationales that promise a total term ("a 0.0 keeps the sum total")
+    /// are true only of an expression this holds for.
+    pub(crate) fn always_resolves(&self) -> bool {
+        match self {
+            Self::None | Self::Component { .. } => false,
+            Self::Number { .. } => true,
+            Self::Neg { param } => param.always_resolves(),
+            Self::Coalesce { params } => params.iter().any(Self::always_resolves),
+            Self::Add { params }
+            | Self::Sub { params }
+            | Self::Min { params }
+            | Self::Max { params } => params.iter().all(Self::always_resolves),
+        }
+    }
+
+    /// Whether the expression needs brackets where the grammar is ambiguous:
+    /// as the operand of a negation, or after a binary `-`. Only an additive
+    /// expression of more than one operand qualifies; a single-term one
+    /// renders like its sole term. The single source of the grammar's
+    /// bracketing rule — `Display` and the commented renderer both use it.
+    pub(crate) fn needs_brackets(&self) -> bool {
+        matches!(self, Self::Add { params } | Self::Sub { params } if params.len() > 1)
+    }
+
+    fn collect_component_ids(&self, ids: &mut Vec<u64>) {
+        match self {
+            Self::None | Self::Number { .. } => {}
+            Self::Component { component_id } => ids.push(*component_id),
+            Self::Neg { param } => param.collect_component_ids(ids),
+            Self::Add { params }
+            | Self::Sub { params }
+            | Self::Coalesce { params }
+            | Self::Min { params }
+            | Self::Max { params } => {
+                for param in params {
+                    param.collect_component_ids(ids);
+                }
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.render())
@@ -295,13 +353,9 @@ impl Expr {
     /// Renders the expression, wrapping it in brackets when it is additive (so
     /// it can be safely placed after a `-`).
     fn render_grouped(&self) -> String {
-        match self {
-            // A single-term additive expression renders like its sole term, so
-            // it needs no brackets (matches the previous printer's behaviour).
-            Self::Add { params } | Self::Sub { params } if params.len() > 1 => {
-                format!("({})", self.render())
-            }
-            _ => self.render(),
+        match self.needs_brackets() {
+            true => format!("({})", self.render()),
+            false => self.render(),
         }
     }
 
@@ -323,6 +377,40 @@ mod tests {
     fn assert_expr(exprs: &[Expr], expected: &str) {
         for expr in exprs {
             assert_eq!(expr.to_string(), expected);
+        }
+    }
+
+    /// A term resolves whatever the readings are only when a constant backs
+    /// it: `COALESCE` recovers a missing operand, the arithmetic operators
+    /// propagate it.
+    #[test]
+    fn test_always_resolves() {
+        let comp = Expr::component;
+        let number = Expr::number;
+        let coalesce = |a: Expr, b: Expr| a.coalesce(b);
+
+        for expr in [
+            number(0.0),
+            coalesce(comp(1), number(0.0)),
+            coalesce(comp(1), number(0.0)) + coalesce(comp(2), number(0.0)),
+            -coalesce(comp(1), number(0.0)),
+            coalesce(comp(1), comp(2)).coalesce(number(0.0)),
+            number(0.0).min(number(1.0)),
+        ] {
+            assert!(expr.always_resolves(), "expected total: {expr}");
+        }
+
+        for expr in [
+            Expr::None,
+            comp(1),
+            coalesce(comp(1), comp(2)),
+            // One bare reading is enough to make the whole sum missable.
+            comp(1) + coalesce(comp(2), number(0.0)),
+            comp(1) - number(0.0),
+            -comp(1),
+            number(0.0).min(comp(1)),
+        ] {
+            assert!(!expr.always_resolves(), "expected missable: {expr}");
         }
     }
 

@@ -10,7 +10,11 @@
 
 ## New Features
 
-<!-- Here goes the main new features and examples or instructions on how to use them -->
+- New optional `explain` feature: formulas can explain themselves. Every `*_formula` method has an explained twin (e.g. `grid_formula_explained()`) that returns an `ExplainedFormula`: the same formula plus a tree of `Explanation` nodes. Each node names its role (an `ExplanationKind` like the meter fallback ladder, a diamond, or a sign clamp), says in plain words why that part of the formula is there, and lists the components it covers. The prose is specific: components are named by category ("PV inverter #4", "battery meter #2"), a no-telemetry exclusion names the operational mode that causes it, and a shape chosen by config says so ("preferred by config"). Parts that are left out on purpose are recorded too, e.g. a child meter skipped to avoid double counting, or a coalesce source without telemetry. Relational kinds carry the counterpart ids as fields: `ChildSkipped` names the sibling that already carries the flow, and `MeterDifference` names the summed meters and the subtracted siblings. `Formula::ast()` returns the formula as a `FormulaAst` tree, so a UI can render and highlight its parts.
+
+- New optional `serde` feature: `Formula` serializes as its formula string. Together with the `explain` feature, `ExplainedFormula`, `Explanation`, `ExplanationKind` and `FormulaAst` implement `serde::Serialize` too. The default feature set is unchanged.
+
+- `ExplainedFormula::to_commented_string()` renders the formula with its reasons as `//` comments. The formula is laid out over several lines, and each part gets its reason on a comment line above it. A run of same-shaped terms (one per component) folds under a single comment — "Each of the 12 PV inverters …" — with each term on one line, so a large site stays readable; a reason already printed at the same level is not repeated. A run of same-shaped meter groups folds too, even when the groups' child counts differ: the shared fallback-ladder prose prints once above the run, and each group keeps a single comment naming its meter and members over its fully laid-out term. Parts that are left out on purpose get a comment too. A parser that skips `//` comments reads exactly the same formula as the plain `Display` string.
 
 ## Bug Fixes
 
