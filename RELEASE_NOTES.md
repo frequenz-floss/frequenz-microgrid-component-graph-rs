@@ -1,17 +1,5 @@
 # Frequenz Component Graph Release Notes
 
-## Summary
-
-<!-- Here goes a general summary of what this release is about -->
-
-## Upgrading
-
-<!-- Here goes notes on how to upgrade from previous versions, including deprecations and what they should be replaced with -->
-
-## New Features
-
-<!-- Here goes the main new features and examples or instructions on how to use them -->
-
 ## Bug Fixes
 
 - The consumer formula counted battery, PV, CHP, EV charger, wind turbine and steam boiler chains as site consumption when the grid connection point has a direct child that is not a grid meter — an inverter wired straight to the grid, for example. Those chains are now subtracted, as they already were when only grid meters sit below the grid connection point. A chain fed from outside the summed meters stays counted, because the sum never added its power in the first place. Graphs that set `include_phantom_loads_in_consumer_formula` are not affected.
