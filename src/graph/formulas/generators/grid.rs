@@ -55,7 +55,11 @@ where
                 meters => {
                     let mut components = BTreeSet::new();
                     for &meter in meters {
-                        components.extend(self.graph.successors(meter)?.map(|s| s.component_id()));
+                        components.extend(
+                            self.graph
+                                .effective_successors(meter)?
+                                .map(|s| s.component_id()),
+                        );
                     }
                     let components: Vec<u64> = components.into_iter().collect();
                     diamond_term(
@@ -85,7 +89,10 @@ where
     /// diamond). Any other overlapping group falls back to per-feed
     /// terms: the members come back as singletons.
     fn feed_groups(&self) -> Result<Vec<Vec<u64>>, Error> {
-        let feeds: Vec<&N> = self.graph.successors(self.graph.root_id)?.collect();
+        let feeds: Vec<&N> = self
+            .graph
+            .effective_successors(self.graph.root_id)?
+            .collect();
         let mut reaches = Vec::new();
         for feed in &feeds {
             reaches.push(self.graph.find_all(

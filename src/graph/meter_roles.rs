@@ -2,6 +2,10 @@
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
 //! Methods for checking the roles of meters in a [`ComponentGraph`].
+//!
+//! Roles are decided on the crate-internal view, which walks past pass-through
+//! categories only: an inactive component still gives its meter a role, even
+//! though the visible view hides it.
 
 use crate::{ComponentGraph, Edge, Error, Node, component_category::CategoryPredicates};
 
@@ -19,7 +23,7 @@ where
     pub fn is_pv_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_pv_inverter()
             })
@@ -34,7 +38,7 @@ where
     pub fn is_battery_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_battery_inverter(&self.config)
             })
@@ -49,7 +53,7 @@ where
     pub fn is_ev_charger_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_ev_charger()
             })
@@ -64,7 +68,7 @@ where
     pub fn is_chp_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_chp()
             })
@@ -79,7 +83,7 @@ where
     pub fn is_wind_turbine_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_wind_turbine()
             })
@@ -94,7 +98,7 @@ where
     pub fn is_steam_boiler_meter(&self, component_id: u64) -> Result<bool, Error> {
         let mut has_successors = false;
         Ok(self.component(component_id)?.is_meter()
-            && self.successors(component_id)?.all(|n| {
+            && self.effective_successors(component_id)?.all(|n| {
                 has_successors = true;
                 n.is_steam_boiler()
             })
@@ -338,7 +342,7 @@ mod tests {
         let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
         let mut found_meters = vec![];
-        for comp in graph.components() {
+        for comp in graph.raw_components() {
             if filter(&graph, comp.component_id())? {
                 found_meters.push(comp.component_id());
             }

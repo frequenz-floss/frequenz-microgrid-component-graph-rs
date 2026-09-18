@@ -36,24 +36,45 @@ flag is set on the config.
 
 ## Pass-through components
 
-Several categories (transformers, breakers, converters, electrolyzers,
-HVAC, capacitor banks, and similar non-metering interconnect components)
-are treated as *pass-through*: validators and formula generators see
-the graph as if those nodes weren't there, and the public
-[`predecessors`] / [`successors`] iterators walk past them transparently.
-The raw graph view, including pass-through nodes, is available via
-[`raw_predecessors`] / [`raw_successors`].
-[`ComponentGraph::try_new`] emits a `tracing::warn!` for each
-pass-through node so operators know what is being elided.
+Several categories (transformers, breakers, converters, electrolyzers, HVAC,
+capacitor banks, and similar non-metering interconnect components) are treated
+as *pass-through*: validators and formula generators see the graph as if those
+nodes weren't there, and the visible view described below hides them.
+[`ComponentGraph::try_new`] emits a `tracing::warn!` for each pass-through node
+so operators know what is being elided.
 
-> **Warning:** Pass-through behavior exists for forward compatibility —
-> when new component categories are introduced, the library treats it
-> as transparent rather than failing validation of the whole graph.
+> **Warning:** Pass-through behavior exists for forward compatibility — when new
+> component categories are introduced, the library treats it as transparent
+> rather than failing validation of the whole graph.
 >
-> The trade-off is that a real misclassification can slip through
-> unnoticed if the `tracing::warn!` output isn't being read; operators
-> integrating this library should make sure those warnings are
-> surfaced.
+> The trade-off is that a real misclassification can slip through unnoticed if
+> the `tracing::warn!` output isn't being read; operators integrating this
+> library should make sure those warnings are surfaced.
+
+## Visible and raw views
+
+The query API comes in two views. The *raw* view is the graph as given:
+[`raw_components`] and [`raw_connections`] list every component and connection,
+and [`raw_predecessors`] / [`raw_successors`] give the graph-direct neighbors.
+The *visible* view hides pass-through components and components whose
+operational mode is `Inactive`: [`visible_components`] skips them, and
+[`visible_predecessors`] / [`visible_successors`] walk past them, so their
+neighbors see each other directly. An inactive battery or hybrid inverter is not
+walked through: it and every component only reachable through it are pruned from
+the view. [`visible_connections`] pairs each visible component with its visible
+successors as `(source_id, destination_id)`, so together with
+[`visible_components`] it describes the visible graph.
+
+The grid connection point stays visible whatever its mode, since hiding it would
+hide the whole graph. Lookup by id via [`component`] resolves hidden components
+too, while [`visible_predecessors`] / [`visible_successors`] called on a hidden
+component yield nothing. [`ComponentGraph::try_new`] emits a `tracing::warn!`
+for each inactive component and for each component the visible view hides.
+
+Validators, formula generators and the meter role checks (`is_pv_meter` and
+friends) keep seeing inactive components: an inactive meter still classifies its
+chain, and formulas resolve it through its reporting children rather than
+reading it.
 
 ## Formulas
 
@@ -83,8 +104,13 @@ overrides available through [`FormulaOverrides`].
 [`GridConnectionPoint`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/enum.ComponentCategory.html#variant.GridConnectionPoint
 [`ComponentGraph::try_new`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.try_new
 [builder]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraphConfig.html#method.builder
-[`predecessors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.predecessors
-[`successors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.successors
+[`component`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.component
+[`visible_components`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.visible_components
+[`visible_connections`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.visible_connections
+[`visible_predecessors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.visible_predecessors
+[`visible_successors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.visible_successors
+[`raw_components`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.raw_components
+[`raw_connections`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.raw_connections
 [`raw_predecessors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.raw_predecessors
 [`raw_successors`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.raw_successors
 [`grid_formula`]: https://docs.rs/frequenz-microgrid-component-graph/latest/frequenz_microgrid_component_graph/struct.ComponentGraph.html#method.grid_formula

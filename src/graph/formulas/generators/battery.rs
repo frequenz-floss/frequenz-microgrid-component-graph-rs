@@ -91,7 +91,7 @@ where
             // left out — the same stance the no-selection path takes.
             inverter_ids.extend(
                 graph
-                    .predecessors(*battery_id)?
+                    .effective_predecessors(*battery_id)?
                     .filter(|x| x.is_battery_inverter(&graph.config))
                     .map(|x| x.component_id()),
             );

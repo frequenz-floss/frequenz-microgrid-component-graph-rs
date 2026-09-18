@@ -289,7 +289,7 @@ fn classify_for_parents<N: Node, E: Edge>(
             }
             if graph.has_successors(other)?
                 && graph
-                    .successors(other)?
+                    .effective_successors(other)?
                     .all(|child| subtracted_set.contains(&child.component_id()))
             {
                 redundant.push(other);

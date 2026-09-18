@@ -61,7 +61,7 @@ where
         let mut meters: BTreeSet<u64> = BTreeSet::new();
 
         for inv_id in &self.inverter_ids {
-            for pred in self.graph.predecessors(*inv_id)? {
+            for pred in self.graph.effective_predecessors(*inv_id)? {
                 if self.graph.is_battery_meter(pred.component_id())? {
                     meters.insert(pred.component_id());
                 }

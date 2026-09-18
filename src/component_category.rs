@@ -5,6 +5,7 @@
 //! category of a component.
 
 use crate::ComponentGraphConfig;
+use crate::OperationalMode;
 use crate::graph_traits::Node;
 use std::fmt::Display;
 
@@ -231,6 +232,12 @@ pub(crate) trait CategoryPredicates: Node {
     /// meter that measures it (e.g. as a PV meter or a CHP meter).
     fn provides_telemetry(&self) -> bool {
         self.operational_mode().provides_telemetry()
+    }
+
+    /// Returns `true` if the component is inactive: it neither provides
+    /// telemetry nor accepts control commands.
+    fn is_inactive(&self) -> bool {
+        self.operational_mode() == OperationalMode::Inactive
     }
 }
 

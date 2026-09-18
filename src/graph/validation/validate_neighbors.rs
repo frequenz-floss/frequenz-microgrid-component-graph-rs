@@ -33,7 +33,7 @@ where
     ///  - have only the Grid or another Meter as predecessors,
     ///  - don't have Batteries as successors.
     pub(super) fn validate_meters(&self) -> Result<(), Error> {
-        for meter in self.cg.components().filter(|n| n.is_meter()) {
+        for meter in self.cg.raw_components().filter(|n| n.is_meter()) {
             self.ensure_on_predecessors(
                 meter,
                 |n| n.is_grid() || n.is_meter(),
@@ -57,7 +57,7 @@ where
     ///  - **Hybrid Inverters**:
     ///    - have only Batteries as successors.
     pub(super) fn validate_inverters(&self) -> Result<(), Error> {
-        for inverter in self.cg.components().filter(|n| n.is_inverter()) {
+        for inverter in self.cg.raw_components().filter(|n| n.is_inverter()) {
             let ComponentCategory::Inverter(inverter_type) = inverter.category() else {
                 continue;
             };
@@ -109,7 +109,7 @@ where
     ///  - have only BatteryInverters or HybridInverters as predecessors,
     ///  - don't have any successors.
     pub(super) fn validate_batteries(&self) -> Result<(), Error> {
-        for battery in self.cg.components().filter(|n| n.is_battery()) {
+        for battery in self.cg.raw_components().filter(|n| n.is_battery()) {
             self.ensure_leaf(battery)?;
             self.ensure_on_predecessors(
                 battery,
@@ -124,7 +124,7 @@ where
     ///  - have only the Grid or a Meter as predecessors,
     ///  - don't have any successors.
     pub(super) fn validate_ev_chargers(&self) -> Result<(), Error> {
-        for ev_charger in self.cg.components().filter(|n| n.is_ev_charger()) {
+        for ev_charger in self.cg.raw_components().filter(|n| n.is_ev_charger()) {
             self.ensure_leaf(ev_charger)?;
             self.ensure_on_predecessors(
                 ev_charger,
@@ -139,7 +139,7 @@ where
     ///  - have only the Grid or a Meter as predecessors,
     ///  - don't have any successors.
     pub(super) fn validate_chps(&self) -> Result<(), Error> {
-        for chp in self.cg.components().filter(|n| n.is_chp()) {
+        for chp in self.cg.raw_components().filter(|n| n.is_chp()) {
             self.ensure_leaf(chp)?;
             self.ensure_on_predecessors(
                 chp,
@@ -154,7 +154,7 @@ where
     ///  - have only the Grid or a Meter as predecessors,
     ///  - don't have any successors.
     pub(super) fn validate_steam_boilers(&self) -> Result<(), Error> {
-        for steam_boiler in self.cg.components().filter(|n| n.is_steam_boiler()) {
+        for steam_boiler in self.cg.raw_components().filter(|n| n.is_steam_boiler()) {
             self.ensure_leaf(steam_boiler)?;
             self.ensure_on_predecessors(
                 steam_boiler,

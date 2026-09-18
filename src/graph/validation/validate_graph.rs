@@ -30,7 +30,7 @@ where
         let mut queue = vec![root_id];
         visited.insert(root_id);
         while let Some(node_id) = queue.pop() {
-            for successor in self.cg.successors(node_id)? {
+            for successor in self.cg.effective_successors(node_id)? {
                 visited.insert(successor.component_id());
                 queue.push(successor.component_id());
             }
@@ -38,7 +38,7 @@ where
 
         let unvisited = self
             .cg
-            .components()
+            .raw_components()
             .filter(|n| !n.category().is_passthrough())
             .map(|n| n.component_id())
             .filter(|id| !visited.contains(id))

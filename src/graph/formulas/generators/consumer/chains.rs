@@ -110,7 +110,7 @@ fn component_chains_below<N: Node, E: Edge>(
     id: u64,
 ) -> Result<BTreeSet<u64>, Error> {
     let mut chains = BTreeSet::new();
-    for successor in graph.successors(id)? {
+    for successor in graph.effective_successors(id)? {
         chains.extend(graph.find_all(
             successor.component_id(),
             |node| {

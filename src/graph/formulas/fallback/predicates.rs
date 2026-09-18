@@ -32,7 +32,7 @@ pub(crate) fn parent_meters<N: Node, E: Edge>(
         return Ok(None);
     }
     let meters: BTreeSet<u64> = graph
-        .predecessors(id)?
+        .effective_predecessors(id)?
         .filter(|predecessor| predecessor.is_meter())
         .map(|predecessor| predecessor.component_id())
         .collect();
@@ -74,7 +74,7 @@ fn reached_only_through_inner<N: Node, E: Edge>(
     meters: &BTreeSet<u64>,
     checked: &mut BTreeSet<u64>,
 ) -> Result<bool, Error> {
-    for predecessor in graph.predecessors(id)? {
+    for predecessor in graph.effective_predecessors(id)? {
         let predecessor_id = predecessor.component_id();
         if meters.contains(&predecessor_id) || !checked.insert(predecessor_id) {
             continue;
@@ -135,7 +135,7 @@ fn is_grid_meter_inner<N: Node, E: Edge>(
         return Ok(false);
     }
     let has_no_siblings = graph.siblings_from_predecessors(id)?.next().is_none();
-    for predecessor in graph.predecessors(id)? {
+    for predecessor in graph.effective_predecessors(id)? {
         if predecessor.is_grid()
             || (has_no_siblings && is_grid_meter_inner(graph, predecessor, checking)?)
         {

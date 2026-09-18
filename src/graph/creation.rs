@@ -8,7 +8,7 @@ use petgraph::graph::DiGraph;
 
 use crate::{ComponentGraphConfig, Edge, Error, Node, component_category::CategoryPredicates};
 
-use super::{ComponentGraph, EdgeMap, NodeIndexMap};
+use super::{ComponentGraph, EdgeMap, NodeIndexMap, Visibility};
 
 /// `ComponentGraph` instantiation.
 impl<N, E> ComponentGraph<N, E>
@@ -33,24 +33,49 @@ where
             root_id,
             edges: EdgeMap::new(),
             config,
+            visibility: Vec::new(),
         };
         cg.add_connections(connections)?;
 
         cg.validate()?;
 
-        // Notify operators that any pass-through nodes in the graph
-        // will be treated as transparent by validators and formula
-        // generators. Logged once per node, after validation, so we
-        // only warn for components that actually end up in the graph.
-        for component in cg.components() {
-            if component.category().is_passthrough() {
-                tracing::warn!(
-                    "Component {cid} ({category}) is a pass-through category and \
-                     will be treated as transparent in validators and formula generators.",
-                    cid = component.component_id(),
-                    category = component.category(),
-                );
-            }
+        cg.visibility = cg.compute_visibility();
+
+        // Notify operators of every pass-through and inactive component, and of
+        // every component the visible view hides. Logged once per node, after
+        // validation, so we only warn for components that actually end up in
+        // the graph.
+        for index in cg.graph.node_indices() {
+            let component = &cg.graph[index];
+            let reason = if component.category().is_passthrough() {
+                "is a pass-through category: it is treated as transparent in \
+                 validators and formula generators, and hidden from the visible \
+                 view"
+            } else {
+                match cg.visibility(index) {
+                    // Only the root is inactive yet visible.
+                    Visibility::Visible if component.is_inactive() => {
+                        "is inactive, but stays in the visible view as the grid \
+                         connection point"
+                    }
+                    Visibility::Visible => continue,
+                    Visibility::Transparent => "is inactive and hidden from the visible view",
+                    Visibility::Blocking => {
+                        "is inactive and hidden from the visible view, along with \
+                         every component only reachable through it"
+                    }
+                    Visibility::Pruned => {
+                        "is not reachable from the grid connection point or from \
+                         any component without predecessors, except through an \
+                         inactive inverter, and hidden from the visible view"
+                    }
+                }
+            };
+            tracing::warn!(
+                "Component {cid} ({category}) {reason}.",
+                cid = component.component_id(),
+                category = component.category(),
+            );
         }
 
         Ok(cg)
