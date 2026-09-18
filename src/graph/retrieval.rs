@@ -3,7 +3,9 @@
 
 //! Methods for retrieving components and connections from a [`ComponentGraph`].
 
-use crate::iterators::{Components, Connections, Neighbors, RawNeighbors, Siblings};
+use crate::iterators::{
+    Components, Neighbors, RawConnections, RawNeighbors, Siblings, VisibleConnections,
+};
 use crate::{ComponentGraph, Edge, Error, Node};
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeSet, HashSet, VecDeque};
@@ -26,22 +28,64 @@ where
             })
     }
 
-    /// Returns an iterator over the components in the graph.
-    pub fn components(&self) -> Components<'_, N> {
-        self.raw_components()
+    /// Returns an iterator over the visible components in the graph.
+    ///
+    /// Pass-through categories and inactive components are hidden, as are
+    /// components only reachable through an inactive battery or hybrid
+    /// inverter. See [`raw_components`][Self::raw_components] for every
+    /// component.
+    pub fn visible_components(&self) -> Components<'_, N> {
+        self.components_view(true)
     }
 
     /// Returns an iterator over *every* component in the graph, including those
-    /// hidden from [`components`][Self::components].
+    /// hidden from [`visible_components`][Self::visible_components].
     pub fn raw_components(&self) -> Components<'_, N> {
+        self.components_view(false)
+    }
+
+    fn components_view(&self, visible_only: bool) -> Components<'_, N> {
         Components {
-            iter: self.graph.raw_nodes().iter(),
+            graph: &self.graph,
+            iter: self.graph.node_indices(),
+            visibility: &self.visibility,
+            visible_only,
         }
     }
 
-    /// Returns an iterator over the connections in the graph.
-    pub fn connections(&self) -> Connections<'_, N, E> {
-        Connections {
+    /// Returns an iterator over the connections between visible components, as
+    /// `(source_id, destination_id)` pairs.
+    ///
+    /// Each visible component is paired with each of its [visible
+    /// successors][Self::visible_successors], so hidden components between the
+    /// two are folded into one pair. Together with
+    /// [`visible_components`][Self::visible_components] this describes the
+    /// visible graph. The pairs are ids, not the caller's connection type,
+    /// because a pair across hidden components has no such connection behind
+    /// it. Walks the graph once per visible component, so collect the result
+    /// instead of calling this in a loop. See
+    /// [`raw_connections`][Self::raw_connections] for every connection.
+    pub fn visible_connections(&self) -> VisibleConnections {
+        let pairs: Vec<(u64, u64)> = self
+            .graph
+            .node_indices()
+            .filter(|&index| self.visibility(index) == Visibility::Visible)
+            .flat_map(|index| {
+                let source = self.graph[index].component_id();
+                self.collect_visible_neighbors_from(index, petgraph::Direction::Outgoing)
+                    .map(move |successor| (source, successor.component_id()))
+            })
+            .collect();
+        VisibleConnections {
+            iter: pairs.into_iter(),
+        }
+    }
+
+    /// Returns an iterator over *every* connection in the graph, including
+    /// those touching components hidden from
+    /// [`visible_components`][Self::visible_components].
+    pub fn raw_connections(&self) -> RawConnections<'_, N, E> {
+        RawConnections {
             cg: self,
             iter: self.graph.raw_edges().iter(),
         }
@@ -427,8 +471,8 @@ mod tests {
         let (components, connections) = nodes_and_edges();
         let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
-        assert!(graph.components().eq(&components));
-        assert!(graph.components().filter(|x| x.is_battery()).eq(&[
+        assert!(graph.raw_components().eq(&components));
+        assert!(graph.raw_components().filter(|x| x.is_battery()).eq(&[
             TestComponent::new(5, ComponentCategory::Battery(BatteryType::Unspecified)),
             TestComponent::new(8, ComponentCategory::Battery(BatteryType::LiIon))
         ]));
@@ -442,11 +486,11 @@ mod tests {
         let (components, connections) = nodes_and_edges();
         let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
-        assert!(graph.connections().eq(&connections));
+        assert!(graph.raw_connections().eq(&connections));
 
         assert!(
             graph
-                .connections()
+                .raw_connections()
                 .filter(|x| x.source() == 2)
                 .eq(&[TestConnection::new(2, 3), TestConnection::new(2, 6)])
         );
@@ -962,6 +1006,302 @@ mod tests {
         assert_eq!(
             ids(graph.visible_successors(live.component_id())?),
             vec![battery.component_id()]
+        );
+        assert!(ids(graph.visible_components()).contains(&battery.component_id()));
+        Ok(())
+    }
+
+    /// Pass-throughs are hidden from `visible_components` like inactive
+    /// components; `raw_components` lists them.
+    ///
+    /// Topology: `Grid → PT → Meter`.
+    #[test]
+    fn test_visible_components_hides_passthroughs() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let pt = builder.power_transformer();
+        let meter = builder.meter();
+        builder.connect(grid, pt);
+        builder.connect(pt, meter);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![grid.component_id(), meter.component_id()]
+        );
+        assert_eq!(
+            ids(graph.raw_components()),
+            vec![grid.component_id(), pt.component_id(), meter.component_id()]
+        );
+        Ok(())
+    }
+
+    /// `visible_components` hides inactive components and those pruned behind
+    /// an inactive battery inverter; `raw_components` lists them all.
+    ///
+    /// Topology: `Grid → Meter → {BatteryInverter (inactive) → Battery,
+    /// BatteryInverter → Battery (inactive)}`.
+    #[test]
+    fn test_visible_components_hides_inactive_and_pruned() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let pruned = builder.battery();
+        let live = builder.battery_inverter();
+        let leaf = builder.add_component_with_mode(
+            ComponentCategory::Battery(BatteryType::LiIon),
+            OperationalMode::Inactive,
+        );
+        builder.connect(grid, meter);
+        builder.connect(meter, dead);
+        builder.connect(dead, pruned);
+        builder.connect(meter, live);
+        builder.connect(live, leaf);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![
+                grid.component_id(),
+                meter.component_id(),
+                live.component_id()
+            ]
+        );
+        assert_eq!(graph.raw_components().count(), 6);
+        Ok(())
+    }
+
+    /// `visible_connections` pairs each visible component with its visible
+    /// successors, folding hidden components in between; `raw_connections`
+    /// keeps every real connection.
+    ///
+    /// Topology: `Grid → PT → Meter`, `Grid → Meter (inactive) → PvInverter`,
+    /// `Grid → Meter`, `Grid → BatteryInverter (inactive) → Battery`.
+    #[test]
+    fn test_visible_connections_fold_hidden_components() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let pt = builder.power_transformer();
+        let meter_a = builder.meter();
+        let silent =
+            builder.add_component_with_mode(ComponentCategory::Meter, OperationalMode::Inactive);
+        let pv = builder.solar_inverter();
+        let meter_b = builder.meter();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let battery = builder.battery();
+        builder.connect(grid, pt);
+        builder.connect(pt, meter_a);
+        builder.connect(grid, silent);
+        builder.connect(silent, pv);
+        builder.connect(grid, meter_b);
+        builder.connect(grid, dead);
+        builder.connect(dead, battery);
+        let graph = builder.build(None)?;
+
+        let mut pairs: Vec<(u64, u64)> = graph.visible_connections().collect();
+        pairs.sort_unstable();
+        assert_eq!(
+            pairs,
+            vec![
+                (grid.component_id(), meter_a.component_id()),
+                (grid.component_id(), pv.component_id()),
+                (grid.component_id(), meter_b.component_id()),
+            ]
+        );
+        assert_eq!(graph.raw_connections().count(), 7);
+        Ok(())
+    }
+
+    /// The root stays visible even behind an inactive inverter, which a graph
+    /// built with neighbor validation failures allowed can carry.
+    ///
+    /// Topology: `BatteryInverter (inactive) → {Grid → Meter, Battery}`.
+    #[test]
+    fn test_root_behind_inactive_inverter_stays_visible() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let battery = builder.battery();
+        builder.connect(dead, grid);
+        builder.connect(dead, battery);
+        builder.connect(grid, meter);
+        let config = ComponentGraphConfig::builder()
+            .allow_component_validation_failures(true)
+            .allow_unconnected_components(true)
+            .build();
+        let graph = builder.build(Some(config))?;
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![grid.component_id(), meter.component_id()]
+        );
+        Ok(())
+    }
+
+    /// A component on a cycle is never its own neighbor. A cycle survives
+    /// validation only off the root's tree, so the graph allows unconnected
+    /// components.
+    ///
+    /// Topology: `Grid → Meter`, plus detached `Meter → Meter → PT → Meter`.
+    #[test]
+    fn test_cycle_never_yields_the_start() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let entry = builder.meter();
+        let looped = builder.meter();
+        let pt = builder.power_transformer();
+        builder.connect(grid, meter);
+        builder.connect(entry, looped);
+        builder.connect(looped, pt);
+        builder.connect(pt, looped);
+        let config = ComponentGraphConfig::builder()
+            .allow_unconnected_components(true)
+            .build();
+        let graph = builder.build(Some(config))?;
+
+        assert!(
+            graph
+                .visible_successors(looped.component_id())?
+                .next()
+                .is_none()
+        );
+        let mut pairs: Vec<(u64, u64)> = graph.visible_connections().collect();
+        pairs.sort_unstable();
+        assert_eq!(
+            pairs,
+            vec![
+                (grid.component_id(), meter.component_id()),
+                (entry.component_id(), looped.component_id()),
+            ]
+        );
+        Ok(())
+    }
+
+    /// A pass-through behind an inactive inverter is pruned too, and a walk
+    /// started at a hidden component yields nothing: the inactive inverter does
+    /// not even see the meter above it.
+    ///
+    /// Topology: `Grid → Meter → BatteryInverter (inactive) → PT → Battery`.
+    #[test]
+    fn test_passthrough_behind_inactive_inverter_is_pruned() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let pt = builder.power_transformer();
+        let battery = builder.battery();
+        builder.connect(grid, meter);
+        builder.connect(meter, dead);
+        builder.connect(dead, pt);
+        builder.connect(pt, battery);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![grid.component_id(), meter.component_id()]
+        );
+        for hidden in [dead, pt, battery] {
+            assert!(
+                graph
+                    .visible_successors(hidden.component_id())?
+                    .next()
+                    .is_none(),
+                "{}",
+                hidden.component_id()
+            );
+            assert!(
+                graph
+                    .visible_predecessors(hidden.component_id())?
+                    .next()
+                    .is_none(),
+                "{}",
+                hidden.component_id()
+            );
+        }
+        Ok(())
+    }
+
+    /// A battery in an unconnected island behind an inactive inverter is pruned
+    /// like one below the root; an active island stays visible.
+    ///
+    /// Topology: `Grid → Meter`, plus detached `BatteryInverter (inactive) →
+    /// Battery` and detached `Meter → PvInverter`.
+    #[test]
+    fn test_island_behind_inactive_inverter_is_pruned() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let battery = builder.battery();
+        let island_meter = builder.meter();
+        let pv = builder.solar_inverter();
+        builder.connect(grid, meter);
+        builder.connect(dead, battery);
+        builder.connect(island_meter, pv);
+        let config = ComponentGraphConfig::builder()
+            .allow_unconnected_components(true)
+            .build();
+        let graph = builder.build(Some(config))?;
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![
+                grid.component_id(),
+                meter.component_id(),
+                island_meter.component_id(),
+                pv.component_id()
+            ]
+        );
+        assert!(
+            graph
+                .visible_successors(dead.component_id())?
+                .next()
+                .is_none()
+        );
+        Ok(())
+    }
+
+    /// A cloned graph keeps the visibility of its components.
+    ///
+    /// Topology: `Grid → PT → Meter (inactive) → PvInverter`.
+    #[test]
+    fn test_clone_keeps_visibility() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let pt = builder.power_transformer();
+        let silent =
+            builder.add_component_with_mode(ComponentCategory::Meter, OperationalMode::Inactive);
+        let pv = builder.solar_inverter();
+        builder.connect(grid, pt);
+        builder.connect(pt, silent);
+        builder.connect(silent, pv);
+        let graph = builder.build(None)?.clone();
+
+        assert_eq!(
+            ids(graph.visible_components()),
+            vec![grid.component_id(), pv.component_id()]
+        );
+        assert_eq!(
+            ids(graph.visible_successors(grid.component_id())?),
+            vec![pv.component_id()]
         );
         Ok(())
     }
