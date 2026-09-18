@@ -14,7 +14,7 @@ where
 {
     /// Checks that the given node is a leaf node.
     pub(super) fn ensure_leaf(&self, node: &N) -> Result<(), Error> {
-        if let Some(successor) = self.cg.successors(node.component_id())?.next() {
+        if let Some(successor) = self.cg.effective_successors(node.component_id())?.next() {
             return Err(ValidationError::new(
                 format!(
                     "{}:{} can't have any successors. Found {}:{}.",
@@ -32,7 +32,12 @@ where
 
     /// Checks that the given node is *not* a leaf node.
     pub(super) fn ensure_not_leaf(&self, node: &N) -> Result<(), Error> {
-        if self.cg.successors(node.component_id())?.next().is_none() {
+        if self
+            .cg
+            .effective_successors(node.component_id())?
+            .next()
+            .is_none()
+        {
             return Err(ValidationError::new(
                 format!(
                     "{}:{} must have at least one successor.",
@@ -48,7 +53,7 @@ where
 
     /// Checks that the given node is a root node.
     pub(super) fn ensure_root(&self, node: &N) -> Result<(), Error> {
-        if let Some(predecessor) = self.cg.predecessors(node.component_id())?.next() {
+        if let Some(predecessor) = self.cg.effective_predecessors(node.component_id())?.next() {
             return Err(ValidationError::new(
                 format!(
                     "{}:{} can't have any predecessors. Found {}:{}.",
@@ -71,7 +76,7 @@ where
         predicate: impl Fn(&N) -> bool,
         failure_message: &str,
     ) -> Result<(), Error> {
-        for predecessor in self.cg.predecessors(node.component_id())? {
+        for predecessor in self.cg.effective_predecessors(node.component_id())? {
             if !predicate(predecessor) {
                 return Err(ValidationError::new(
                     format!(
@@ -97,7 +102,7 @@ where
         predicate: impl Fn(&N) -> bool,
         failure_message: &str,
     ) -> Result<(), Error> {
-        for successor in self.cg.successors(node.component_id())? {
+        for successor in self.cg.effective_successors(node.component_id())? {
             if !predicate(successor) {
                 return Err(ValidationError::new(
                     format!(
@@ -121,8 +126,13 @@ where
     /// A node's successors are exclusive to the node if they don't have any
     /// other predecessors.
     pub(super) fn ensure_exclusive_successors(&self, node: &N) -> Result<(), Error> {
-        for successor in self.cg.successors(node.component_id())? {
-            if self.cg.predecessors(successor.component_id())?.count() > 1 {
+        for successor in self.cg.effective_successors(node.component_id())? {
+            if self
+                .cg
+                .effective_predecessors(successor.component_id())?
+                .count()
+                > 1
+            {
                 return Err(ValidationError::new(
                     format!(
                         "{}:{} can't have successors with multiple predecessors. Found {}:{}.",

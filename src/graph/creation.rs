@@ -42,7 +42,7 @@ where
         // will be treated as transparent by validators and formula
         // generators. Logged once per node, after validation, so we
         // only warn for components that actually end up in the graph.
-        for component in cg.components() {
+        for component in cg.raw_components() {
             if component.category().is_passthrough() {
                 tracing::warn!(
                     "Component {cid} ({category}) is a pass-through category and \

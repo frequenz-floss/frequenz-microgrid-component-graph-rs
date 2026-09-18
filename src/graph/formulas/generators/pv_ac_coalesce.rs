@@ -64,7 +64,7 @@ where
                     "Component with id {inv_id} is not a PV inverter."
                 )));
             }
-            for pred in self.graph.predecessors(*inv_id)? {
+            for pred in self.graph.effective_predecessors(*inv_id)? {
                 if self.graph.is_pv_meter(pred.component_id())? {
                     meters.insert(pred.component_id());
                 }

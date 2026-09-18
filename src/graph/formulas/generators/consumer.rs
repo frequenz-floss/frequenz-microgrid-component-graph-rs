@@ -64,7 +64,7 @@ where
 
         let grid_successors = self
             .graph
-            .successors(self.graph.root_id)?
+            .effective_successors(self.graph.root_id)?
             .collect::<Vec<_>>();
 
         if grid_successors.is_empty() {
@@ -91,7 +91,7 @@ where
 
         let meters = self
             .graph
-            .successors(self.graph.root_id)?
+            .effective_successors(self.graph.root_id)?
             .map(|successor| successor.component_id())
             .collect::<BTreeSet<_>>();
         let targets = chains::subtraction_targets(self.graph, &meters)?;

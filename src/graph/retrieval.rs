@@ -26,6 +26,12 @@ where
 
     /// Returns an iterator over the components in the graph.
     pub fn components(&self) -> Components<'_, N> {
+        self.raw_components()
+    }
+
+    /// Returns an iterator over *every* component in the graph, including those
+    /// hidden from [`components`][Self::components].
+    pub fn raw_components(&self) -> Components<'_, N> {
         Components {
             iter: self.graph.raw_nodes().iter(),
         }
@@ -94,6 +100,19 @@ where
     ///
     /// Returns an error if the given `component_id` does not exist.
     pub fn predecessors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
+        self.effective_predecessors(component_id)
+    }
+
+    /// Crate-internal view of the predecessors of the component with the
+    /// given `component_id`: walks past pass-through categories only.
+    ///
+    /// Validators and formula generators use this view so that inactive
+    /// components, which the public [`predecessors`][Self::predecessors]
+    /// hides, still take part in validation and formula generation.
+    pub(crate) fn effective_predecessors(
+        &self,
+        component_id: u64,
+    ) -> Result<Neighbors<'_, N>, Error> {
         self.collect_effective_neighbors(component_id, petgraph::Direction::Incoming)
     }
 
@@ -108,6 +127,17 @@ where
     ///
     /// Returns an error if the given `component_id` does not exist.
     pub fn successors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
+        self.effective_successors(component_id)
+    }
+
+    /// Crate-internal view of the successors of the component with the
+    /// given `component_id`: walks past pass-through categories only.
+    ///
+    /// See [`effective_predecessors`][Self::effective_predecessors].
+    pub(crate) fn effective_successors(
+        &self,
+        component_id: u64,
+    ) -> Result<Neighbors<'_, N>, Error> {
         self.collect_effective_neighbors(component_id, petgraph::Direction::Outgoing)
     }
 
@@ -154,8 +184,8 @@ where
     ) -> Result<Siblings<'_, N>, Error> {
         Ok(Siblings::new(
             component_id,
-            self.predecessors(component_id)?
-                .map(|x| self.successors(x.component_id()))
+            self.effective_predecessors(component_id)?
+                .map(|x| self.effective_successors(x.component_id()))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten(),
@@ -172,8 +202,8 @@ where
     ) -> Result<Siblings<'_, N>, Error> {
         Ok(Siblings::new(
             component_id,
-            self.successors(component_id)?
-                .map(|x| self.predecessors(x.component_id()))
+            self.effective_successors(component_id)?
+                .map(|x| self.effective_predecessors(x.component_id()))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .flatten(),

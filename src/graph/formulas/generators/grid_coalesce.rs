@@ -38,7 +38,7 @@ where
     pub fn build(self) -> Result<Formula, Error> {
         let ids = self
             .graph
-            .successors(self.graph.root_id)?
+            .effective_successors(self.graph.root_id)?
             .filter(|node| {
                 node.is_meter()
                     || node.is_pv_inverter()

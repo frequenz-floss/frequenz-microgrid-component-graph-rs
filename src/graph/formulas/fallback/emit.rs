@@ -31,7 +31,7 @@ pub(super) fn measure<N: Node, E: Edge>(
         }
         return Ok(own.coalesce(Expr::number(0.0)));
     }
-    let children: Vec<&N> = graph.successors(id)?.collect();
+    let children: Vec<&N> = graph.effective_successors(id)?.collect();
     // A child that provides no telemetry has no reading to emit: it is
     // dropped from every child sum; the meter term itself covers it. A
     // silent child meter is the exception: when its children are reached
@@ -326,7 +326,7 @@ fn child_term_kind<N: Node, E: Edge>(
     }
     let meter_id = child.component_id();
     let meters = BTreeSet::from([meter_id]);
-    for successor in graph.successors(meter_id)? {
+    for successor in graph.effective_successors(meter_id)? {
         if !reached_only_through(graph, successor.component_id(), &meters)? {
             return Ok(ChildTerm::Bare);
         }
@@ -358,7 +358,7 @@ pub(super) fn stands_alone<N: Node, E: Edge>(
     id: u64,
     policy: SourcePreference,
 ) -> Result<bool, Error> {
-    let successors: Vec<&N> = graph.successors(id)?.collect();
+    let successors: Vec<&N> = graph.effective_successors(id)?.collect();
     if successors.is_empty() {
         return Ok(true);
     }

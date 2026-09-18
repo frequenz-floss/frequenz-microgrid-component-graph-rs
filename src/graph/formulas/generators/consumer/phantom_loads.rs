@@ -70,7 +70,7 @@ where
 
         let other_grid_successors = self
             .graph
-            .successors(self.graph.root_id)?
+            .effective_successors(self.graph.root_id)?
             .filter(|s| {
                 !s.is_meter()
                     && !s.is_battery_inverter(&self.graph.config)
@@ -127,7 +127,7 @@ where
             }
             let mut successors = BTreeMap::new();
             for &member in &group {
-                for successor in self.graph.successors(member)? {
+                for successor in self.graph.effective_successors(member)? {
                     successors.insert(successor.component_id(), successor);
                 }
             }
