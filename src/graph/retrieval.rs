@@ -8,6 +8,8 @@ use crate::{ComponentGraph, Edge, Error, Node};
 use petgraph::graph::NodeIndex;
 use std::collections::{BTreeSet, HashSet, VecDeque};
 
+use super::Visibility;
+
 /// `Component` and `Connection` retrieval.
 impl<N, E> ComponentGraph<N, E>
 where
@@ -45,26 +47,26 @@ where
         }
     }
 
-    /// Returns an iterator over the *raw* (graph-direct) predecessors of
-    /// the component with the given `component_id`.
+    /// Returns an iterator over the *raw* (graph-direct) predecessors of the
+    /// component with the given `component_id`.
     ///
-    /// "Raw" means every node connected by an incoming edge, including
-    /// pass-through categories. Most callers want
-    /// [`predecessors`][Self::predecessors] instead, which walks past
-    /// pass-throughs transparently.
+    /// "Raw" means every node connected by an incoming edge, including hidden
+    /// components. Most callers want
+    /// [`visible_predecessors`][Self::visible_predecessors] instead, which
+    /// walks past hidden components.
     ///
     /// Returns an error if the given `component_id` does not exist.
     pub fn raw_predecessors(&self, component_id: u64) -> Result<RawNeighbors<'_, N>, Error> {
         self.raw_neighbors(component_id, petgraph::Direction::Incoming)
     }
 
-    /// Returns an iterator over the *raw* (graph-direct) successors of
-    /// the component with the given `component_id`.
+    /// Returns an iterator over the *raw* (graph-direct) successors of the
+    /// component with the given `component_id`.
     ///
-    /// "Raw" means every node connected by an outgoing edge, including
-    /// pass-through categories. Most callers want
-    /// [`successors`][Self::successors] instead, which walks past
-    /// pass-throughs transparently.
+    /// "Raw" means every node connected by an outgoing edge, including hidden
+    /// components. Most callers want
+    /// [`visible_successors`][Self::visible_successors] instead, which walks
+    /// past hidden components.
     ///
     /// Returns an error if the given `component_id` does not exist.
     pub fn raw_successors(&self, component_id: u64) -> Result<RawNeighbors<'_, N>, Error> {
@@ -89,26 +91,29 @@ where
             })
     }
 
-    /// Returns an iterator over the *predecessors* of the component with
-    /// the given `component_id`, walking transparently past pass-through
-    /// categories.
+    /// Returns an iterator over the visible *predecessors* of the component
+    /// with the given `component_id`, walking transparently past hidden
+    /// components.
     ///
-    /// Pass-through nodes are skipped: their non-pass-through ancestors
-    /// take their place in the iterator. For the raw (graph-direct) view
-    /// that includes pass-throughs, use
+    /// Pass-through categories and inactive components are skipped: their
+    /// visible ancestors take their place in the iterator. An inactive battery
+    /// or hybrid inverter is not walked through, so the components behind it
+    /// have no visible predecessors. A hidden component has no visible
+    /// predecessors either. For the raw (graph-direct) view, use
     /// [`raw_predecessors`][Self::raw_predecessors].
     ///
     /// Returns an error if the given `component_id` does not exist.
-    pub fn predecessors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
-        self.effective_predecessors(component_id)
+    pub fn visible_predecessors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
+        self.collect_visible_neighbors(component_id, petgraph::Direction::Incoming)
     }
 
-    /// Crate-internal view of the predecessors of the component with the
-    /// given `component_id`: walks past pass-through categories only.
+    /// Crate-internal view of the predecessors of the component with the given
+    /// `component_id`: walks past pass-through categories only.
     ///
     /// Validators and formula generators use this view so that inactive
-    /// components, which the public [`predecessors`][Self::predecessors]
-    /// hides, still take part in validation and formula generation.
+    /// components, which the public
+    /// [`visible_predecessors`][Self::visible_predecessors] hides,
+    /// still take part in validation and formula generation.
     pub(crate) fn effective_predecessors(
         &self,
         component_id: u64,
@@ -116,22 +121,23 @@ where
         self.collect_effective_neighbors(component_id, petgraph::Direction::Incoming)
     }
 
-    /// Returns an iterator over the *successors* of the component with
-    /// the given `component_id`, walking transparently past pass-through
-    /// categories.
+    /// Returns an iterator over the visible *successors* of the component with
+    /// the given `component_id`, walking transparently past hidden components.
     ///
-    /// Pass-through nodes are skipped: their non-pass-through descendants
-    /// take their place in the iterator. For the raw (graph-direct) view
-    /// that includes pass-throughs, use
+    /// Pass-through categories and inactive components are skipped: their
+    /// visible descendants take their place in the iterator. An inactive
+    /// battery or hybrid inverter is not walked through, so it and the
+    /// components behind it never appear. A hidden component has no visible
+    /// successors either. For the raw (graph-direct) view, use
     /// [`raw_successors`][Self::raw_successors].
     ///
     /// Returns an error if the given `component_id` does not exist.
-    pub fn successors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
-        self.effective_successors(component_id)
+    pub fn visible_successors(&self, component_id: u64) -> Result<Neighbors<'_, N>, Error> {
+        self.collect_visible_neighbors(component_id, petgraph::Direction::Outgoing)
     }
 
-    /// Crate-internal view of the successors of the component with the
-    /// given `component_id`: walks past pass-through categories only.
+    /// Crate-internal view of the successors of the component with the given
+    /// `component_id`: walks past pass-through categories only.
     ///
     /// See [`effective_predecessors`][Self::effective_predecessors].
     pub(crate) fn effective_successors(
@@ -148,30 +154,86 @@ where
         component_id: u64,
         direction: petgraph::Direction,
     ) -> Result<Neighbors<'_, N>, Error> {
-        let start = *self.node_indices.get(&component_id).ok_or_else(|| {
-            Error::component_not_found(format!("Component with id {component_id} not found."))
-        })?;
+        let start = self.index_of(component_id)?;
+        Ok(self.collect_neighbors_from(start, direction, |idx| {
+            if self.graph[idx].category().is_passthrough() {
+                Visibility::Transparent
+            } else {
+                Visibility::Visible
+            }
+        }))
+    }
 
+    /// BFS through hidden nodes in the given direction, collecting the first
+    /// visible node along each branch and stopping at blocking ones. A hidden
+    /// start has no visible neighbors.
+    fn collect_visible_neighbors(
+        &self,
+        component_id: u64,
+        direction: petgraph::Direction,
+    ) -> Result<Neighbors<'_, N>, Error> {
+        let start = self.index_of(component_id)?;
+        Ok(self.collect_visible_neighbors_from(start, direction))
+    }
+
+    /// [`collect_visible_neighbors`][Self::collect_visible_neighbors] from a
+    /// node index.
+    fn collect_visible_neighbors_from(
+        &self,
+        start: NodeIndex,
+        direction: petgraph::Direction,
+    ) -> Neighbors<'_, N> {
+        if self.visibility(start) != Visibility::Visible {
+            return Neighbors {
+                iter: Vec::new().into_iter(),
+            };
+        }
+        self.collect_neighbors_from(start, direction, |idx| self.visibility(idx))
+    }
+
+    /// The node index of the component with the given `component_id`.
+    ///
+    /// Returns an error if the given `component_id` does not exist.
+    fn index_of(&self, component_id: u64) -> Result<NodeIndex, Error> {
+        self.node_indices
+            .get(&component_id)
+            .copied()
+            .ok_or_else(|| {
+                Error::component_not_found(format!("Component with id {component_id} not found."))
+            })
+    }
+
+    /// BFS from `start` in the given direction, letting `classify` decide per
+    /// node whether the walk yields it (visible), walks through it
+    /// (transparent) or stops (blocking or pruned).
+    fn collect_neighbors_from(
+        &self,
+        start: NodeIndex,
+        direction: petgraph::Direction,
+        classify: impl Fn(NodeIndex) -> Visibility,
+    ) -> Neighbors<'_, N> {
         let mut queue: VecDeque<NodeIndex> =
             self.graph.neighbors_directed(start, direction).collect();
-        let mut visited: HashSet<NodeIndex> = HashSet::new();
+        // The start is never its own neighbor, even on a cycle.
+        let mut visited: HashSet<NodeIndex> = HashSet::from([start]);
         let mut result: Vec<&N> = Vec::new();
 
         while let Some(idx) = queue.pop_front() {
             if !visited.insert(idx) {
                 continue;
             }
-            let node = &self.graph[idx];
-            if node.category().is_passthrough() {
-                queue.extend(self.graph.neighbors_directed(idx, direction));
-            } else {
-                result.push(node);
+            match classify(idx) {
+                Visibility::Visible => result.push(&self.graph[idx]),
+                Visibility::Transparent => {
+                    queue.extend(self.graph.neighbors_directed(idx, direction));
+                }
+                Visibility::Blocking | Visibility::Pruned => {}
             }
         }
 
-        Ok(Neighbors {
+        Neighbors {
             iter: result.into_iter(),
-        })
+        }
     }
 
     /// Returns an iterator over the *siblings* of the component with the
@@ -294,11 +356,18 @@ mod tests {
     use crate::ComponentCategory;
     use crate::ComponentGraphConfig;
     use crate::InverterType;
+    use crate::OperationalMode;
     use crate::component_category::BatteryType;
     use crate::component_category::CategoryPredicates;
     use crate::error::Error;
     use crate::graph::test_utils::ComponentGraphBuilder;
     use crate::graph::test_utils::{TestComponent, TestConnection};
+
+    fn ids<'a>(iter: impl Iterator<Item = &'a TestComponent>) -> Vec<u64> {
+        let mut ids: Vec<u64> = iter.map(|c| c.component_id()).collect();
+        ids.sort_unstable();
+        ids
+    }
 
     fn nodes_and_edges() -> (Vec<TestComponent>, Vec<TestConnection>) {
         let components = vec![
@@ -391,37 +460,37 @@ mod tests {
         let (components, connections) = nodes_and_edges();
         let graph = ComponentGraph::try_new(components.clone(), connections.clone(), config)?;
 
-        assert!(graph.predecessors(1).is_ok_and(|x| x.eq(&[])));
+        assert!(graph.visible_predecessors(1).is_ok_and(|x| x.eq(&[])));
 
         assert!(
             graph
-                .predecessors(3)
+                .visible_predecessors(3)
                 .is_ok_and(|x| x.eq(&[TestComponent::new(2, ComponentCategory::Meter)]))
         );
 
         assert!(
             graph
-                .successors(1)
+                .visible_successors(1)
                 .is_ok_and(|x| x.eq(&[TestComponent::new(2, ComponentCategory::Meter)]))
         );
 
-        assert!(graph.successors(2).is_ok_and(|x| {
+        assert!(graph.visible_successors(2).is_ok_and(|x| {
             x.eq(&[
                 TestComponent::new(6, ComponentCategory::Meter),
                 TestComponent::new(3, ComponentCategory::Meter),
             ])
         }));
 
-        assert!(graph.successors(5).is_ok_and(|x| x.eq(&[])));
+        assert!(graph.visible_successors(5).is_ok_and(|x| x.eq(&[])));
 
         assert!(
             graph
-                .predecessors(32)
+                .visible_predecessors(32)
                 .is_err_and(|e| e == Error::component_not_found("Component with id 32 not found."))
         );
         assert!(
             graph
-                .successors(32)
+                .visible_successors(32)
                 .is_err_and(|e| e == Error::component_not_found("Component with id 32 not found."))
         );
 
@@ -545,20 +614,20 @@ mod tests {
             .collect();
         assert_eq!(raw_succs, vec![pt.component_id()]);
 
-        // Effective view walks past the PT.
+        // The visible view walks past the PT.
         let preds: Vec<u64> = graph
-            .predecessors(meter.component_id())?
+            .visible_predecessors(meter.component_id())?
             .map(|n| n.component_id())
             .collect();
         assert_eq!(preds, vec![grid.component_id()]);
 
         let succs: Vec<u64> = graph
-            .successors(grid.component_id())?
+            .visible_successors(grid.component_id())?
             .map(|n| n.component_id())
             .collect();
         assert_eq!(succs, vec![meter.component_id()]);
 
-        // Unknown component_id behaves the same as the effective methods.
+        // Unknown component_id behaves the same as the visible methods.
         assert!(graph.raw_predecessors(999).is_err());
         assert!(graph.raw_successors(999).is_err());
 
@@ -725,6 +794,196 @@ mod tests {
         )?;
         assert_eq!(found, BTreeSet::from([battery.component_id()]));
 
+        Ok(())
+    }
+
+    /// An inactive meter is transparent to the visible view: its neighbours see
+    /// through it in both directions, while the crate-internal view still stops
+    /// at it.
+    ///
+    /// Topology: `Grid → Meter (inactive) → PvInverter`.
+    #[test]
+    fn test_inactive_meter_is_transparent() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter =
+            builder.add_component_with_mode(ComponentCategory::Meter, OperationalMode::Inactive);
+        let pv = builder.solar_inverter();
+        builder.connect(grid, meter);
+        builder.connect(meter, pv);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_successors(grid.component_id())?),
+            vec![pv.component_id()]
+        );
+        assert_eq!(
+            ids(graph.visible_predecessors(pv.component_id())?),
+            vec![grid.component_id()]
+        );
+        assert_eq!(
+            ids(graph.effective_successors(grid.component_id())?),
+            vec![meter.component_id()]
+        );
+        Ok(())
+    }
+
+    /// The root stays visible even when inactive: hiding it would hide the
+    /// whole graph.
+    ///
+    /// Topology: `Grid (inactive) → Meter`.
+    #[test]
+    fn test_inactive_root_stays_visible() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.add_component_with_mode(
+            ComponentCategory::GridConnectionPoint,
+            OperationalMode::Inactive,
+        );
+        let meter = builder.meter();
+        builder.connect(grid, meter);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_predecessors(meter.component_id())?),
+            vec![grid.component_id()]
+        );
+        assert_eq!(
+            ids(graph.visible_successors(grid.component_id())?),
+            vec![meter.component_id()]
+        );
+        Ok(())
+    }
+
+    /// An inactive leaf simply disappears from the visible view.
+    ///
+    /// Topology: `Grid → Meter → BatteryInverter → Battery (inactive)`.
+    #[test]
+    fn test_inactive_leaf_is_hidden() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let inverter = builder.battery_inverter();
+        let battery = builder.add_component_with_mode(
+            ComponentCategory::Battery(BatteryType::LiIon),
+            OperationalMode::Inactive,
+        );
+        builder.connect(grid, meter);
+        builder.connect(meter, inverter);
+        builder.connect(inverter, battery);
+        let graph = builder.build(None)?;
+
+        assert!(
+            graph
+                .visible_successors(inverter.component_id())?
+                .next()
+                .is_none()
+        );
+        assert_eq!(
+            ids(graph.effective_successors(inverter.component_id())?),
+            vec![battery.component_id()]
+        );
+        Ok(())
+    }
+
+    /// An inactive battery or hybrid inverter is not walked through: it and the
+    /// battery behind it are pruned from the visible view.
+    ///
+    /// Topology: `Grid → Meter → Inverter (inactive) → Battery`.
+    #[test]
+    fn test_inactive_battery_or_hybrid_inverter_prunes_its_battery() -> Result<(), Error> {
+        for inverter_type in [InverterType::Battery, InverterType::Hybrid] {
+            let mut builder = ComponentGraphBuilder::new();
+            let grid = builder.grid();
+            let meter = builder.meter();
+            let inverter = builder.add_component_with_mode(
+                ComponentCategory::Inverter(inverter_type),
+                OperationalMode::Inactive,
+            );
+            let battery = builder.battery();
+            builder.connect(grid, meter);
+            builder.connect(meter, inverter);
+            builder.connect(inverter, battery);
+            let graph = builder.build(None)?;
+
+            assert!(
+                graph
+                    .visible_successors(meter.component_id())?
+                    .next()
+                    .is_none(),
+                "{inverter_type}"
+            );
+            assert!(
+                graph
+                    .visible_predecessors(battery.component_id())?
+                    .next()
+                    .is_none(),
+                "{inverter_type}"
+            );
+            // The internal view still sees the whole chain.
+            assert_eq!(
+                ids(graph.effective_successors(meter.component_id())?),
+                vec![inverter.component_id()]
+            );
+        }
+        Ok(())
+    }
+
+    /// A battery still reachable through an active inverter is kept, even
+    /// though its other inverter is inactive.
+    ///
+    /// Topology: `Grid → Meter → {BatteryInverter (inactive), BatteryInverter}
+    /// → Battery`.
+    #[test]
+    fn test_shared_battery_survives_one_inactive_inverter() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter = builder.meter();
+        let dead = builder.add_component_with_mode(
+            ComponentCategory::Inverter(InverterType::Battery),
+            OperationalMode::Inactive,
+        );
+        let live = builder.battery_inverter();
+        let battery = builder.battery();
+        builder.connect(grid, meter);
+        builder.connect(meter, dead);
+        builder.connect(meter, live);
+        builder.connect(dead, battery);
+        builder.connect(live, battery);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            ids(graph.visible_successors(meter.component_id())?),
+            vec![live.component_id()]
+        );
+        assert_eq!(
+            ids(graph.visible_predecessors(battery.component_id())?),
+            vec![live.component_id()]
+        );
+        assert_eq!(
+            ids(graph.visible_successors(live.component_id())?),
+            vec![battery.component_id()]
+        );
+        Ok(())
+    }
+
+    /// Lookup by id is explicit, so a hidden component stays resolvable.
+    ///
+    /// Topology: `Grid → Meter (inactive) → PvInverter`.
+    #[test]
+    fn test_component_resolves_hidden_id() -> Result<(), Error> {
+        let mut builder = ComponentGraphBuilder::new();
+        let grid = builder.grid();
+        let meter =
+            builder.add_component_with_mode(ComponentCategory::Meter, OperationalMode::Inactive);
+        let pv = builder.solar_inverter();
+        builder.connect(grid, meter);
+        builder.connect(meter, pv);
+        let graph = builder.build(None)?;
+
+        assert_eq!(
+            graph.component(meter.component_id())?.component_id(),
+            meter.component_id()
+        );
         Ok(())
     }
 }

@@ -55,8 +55,8 @@ where
 /// An iterator over the *raw* (graph-direct) neighbors of a component.
 ///
 /// Returned by [`ComponentGraph::raw_predecessors`] and
-/// [`ComponentGraph::raw_successors`]. Yields every node connected by an
-/// edge, including pass-through categories.
+/// [`ComponentGraph::raw_successors`]. Yields every node connected by an edge,
+/// including the components the visible view hides.
 pub struct RawNeighbors<'a, N>
 where
     N: Node,
@@ -76,13 +76,14 @@ where
     }
 }
 
-/// An iterator over the *effective* (pass-through-aware) neighbors of a
-/// component.
+/// An iterator over the neighbors a filtered walk collects for a component.
 ///
-/// Returned by [`ComponentGraph::predecessors`] and
-/// [`ComponentGraph::successors`]. Yields only non-pass-through ancestors
-/// or descendants, walking transparently past pass-through nodes in the
-/// chain. Eagerly collected at construction time.
+/// Returned by [`ComponentGraph::visible_predecessors`] and
+/// [`ComponentGraph::visible_successors`], which yield only visible
+/// components, walking past transparent ones and stopping at blocking ones;
+/// and by the crate-internal `effective_predecessors` and
+/// `effective_successors`, which walk past pass-through categories only.
+/// Eagerly collected at construction time.
 pub struct Neighbors<'a, N>
 where
     N: Node,
