@@ -2,6 +2,10 @@
 // Copyright © 2024 Frequenz Energy-as-a-Service GmbH
 
 //! Methods for checking the roles of meters in a [`ComponentGraph`].
+//!
+//! Roles are decided on the crate-internal view, which walks past pass-through
+//! categories only: an inactive component still gives its meter a role, even
+//! though the visible view hides it.
 
 use crate::{ComponentGraph, Edge, Error, Node, component_category::CategoryPredicates};
 

@@ -8,6 +8,7 @@ mod creation;
 mod meter_roles;
 mod retrieval;
 mod validation;
+mod visibility;
 
 mod formulas;
 pub mod iterators;
@@ -16,6 +17,7 @@ use crate::{ComponentGraphConfig, Edge, Node};
 pub use formulas::Formula;
 use petgraph::graph::{DiGraph, NodeIndex};
 use std::collections::HashMap;
+pub(crate) use visibility::Visibility;
 
 /// `Node`s stored in a `DiGraph` instance can be addressed with `NodeIndex`es.
 ///
@@ -42,6 +44,10 @@ where
     root_id: u64,
     edges: EdgeMap<E>,
     config: ComponentGraphConfig,
+    /// The visibility of each component, indexed by node index. See the
+    /// [`visibility`] module. Empty until construction has validated the graph,
+    /// so validators must not read it.
+    visibility: Vec<Visibility>,
 }
 
 /// Implement `Clone` for `ComponentGraph` when the `Node`s and `Edge`s
@@ -58,6 +64,7 @@ where
             root_id: self.root_id,
             edges: self.edges.clone(),
             config: self.config.clone(),
+            visibility: self.visibility.clone(),
         }
     }
 }
