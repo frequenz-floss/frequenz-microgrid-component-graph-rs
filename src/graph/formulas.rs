@@ -37,6 +37,9 @@ where
     }
 
     /// Returns the producer formula for the graph.
+    ///
+    /// The result is not clamped: a producer that draws power adds a positive
+    /// value, so the total can be positive.
     pub fn producer_formula(&self) -> Result<Formula, Error> {
         generators::producer::ProducerFormulaBuilder::try_new(self)?.build()
     }
