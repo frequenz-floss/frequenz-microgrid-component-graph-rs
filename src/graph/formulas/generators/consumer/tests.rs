@@ -42,7 +42,7 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
     let formula = graph.consumer_formula()?.to_string();
     assert_eq!(formula, "MAX(#1, 0.0)");
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#1, 0.0)");
+    assert_eq!(formula, "#1");
 
     // Add a battery meter with one battery inverter and one battery to the
     // grid meter.
@@ -67,7 +67,7 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
     );
     let graph_no_phantom = builder.build(None)?;
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#1 - COALESCE(#2, #3, 0.0), 0.0)");
+    assert_eq!(formula, "#1 - COALESCE(#2, #3, 0.0)");
 
     // Add a solar meter with two solar inverters to the grid meter.
     let meter_pv_chain = builder.meter_pv_chain(2);
@@ -94,12 +94,7 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
     let formula = graph_no_phantom.consumer_formula()?.to_string();
     assert_eq!(
         formula,
-        concat!(
-            "MAX(",
-            "#1 - COALESCE(#2, #3, 0.0) - COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)), ",
-            "0.0",
-            ")",
-        )
+        "#1 - COALESCE(#2, #3, 0.0) - COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0))"
     );
 
     // Add a "mixed" meter with a CHP, an ev charger and a solar inverter to
@@ -143,12 +138,10 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
         formula,
         concat!(
             // difference of grid meter from all non-consumer meters
-            "MAX(",
             "#1 - ",
             "COALESCE(#2, #3, 0.0) - ",
             "COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)) - ",
-            "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0)), ",
-            "0.0)"
+            "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0))",
         )
     );
 
@@ -178,7 +171,7 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
             .build(),
     ))?;
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#1 - #2 - #5 - #8 - #9 - #10, 0.0)");
+    assert_eq!(formula, "#1 - #2 - #5 - #8 - #9 - #10");
 
     // add a battery chain to the grid meter and a dangling meter to the grid.
     let meter_bat_chain = builder.meter_bat_chain(1, 1);
@@ -226,13 +219,11 @@ fn test_consumer_formula_with_grid_meter() -> Result<(), Error> {
         concat!(
             // difference of grid meter from all non-consumer meters, adding
             // the dangling meter consumption.
-            "MAX(",
             "#1 + #15 - ",
             "COALESCE(#2, #3, 0.0) - ",
             "COALESCE(#5, COALESCE(#7, 0.0) + COALESCE(#6, 0.0)) - ",
             "COALESCE(#11, COALESCE(#10, 0.0) + COALESCE(#9, 0.0) + COALESCE(#8, 0.0)) - ",
-            "COALESCE(#12, #13, 0.0), ",
-            "0.0)",
+            "COALESCE(#12, #13, 0.0)",
         )
     );
 
@@ -272,7 +263,7 @@ fn test_consumer_formula_producers_directly_under_grid_meter() -> Result<(), Err
         // The bare grid meter minus each producer's own reading. The grid
         // meter does NOT stand in for the producer group; that would
         // cancel to zero.
-        "MAX(#1 - COALESCE(#2, 0.0) - COALESCE(#3, 0.0), 0.0)",
+        "#1 - COALESCE(#2, 0.0) - COALESCE(#3, 0.0)",
     );
 
     Ok(())
@@ -329,7 +320,7 @@ fn test_consumer_formula_without_grid_meter() -> Result<(), Error> {
     );
     let graph_no_phantom = builder.build(None)?;
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#6 + #7, 0.0)");
+    assert_eq!(formula, "#6 + #7");
 
     // Add a battery inverter to the grid, without a battery meter.
     //
@@ -351,7 +342,7 @@ fn test_consumer_formula_without_grid_meter() -> Result<(), Error> {
     );
     let graph_no_phantom = builder.build(None)?;
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#6 + #7, 0.0)");
+    assert_eq!(formula, "#6 + #7");
 
     // Add a PV inverter and a CHP to the grid, without a meter.
     //
@@ -380,7 +371,7 @@ fn test_consumer_formula_without_grid_meter() -> Result<(), Error> {
     );
     let graph_no_phantom = builder.build(None)?;
     let formula = graph_no_phantom.consumer_formula()?.to_string();
-    assert_eq!(formula, "MAX(#6 + #7, 0.0)");
+    assert_eq!(formula, "#6 + #7");
 
     Ok(())
 }
@@ -409,7 +400,7 @@ fn test_consumer_formula_without_grid_meter_skips_no_telemetry() -> Result<(), E
 
     let graph = builder.build(None)?;
     // Only the reporting dangling meter #4 is summed; #5 is dropped.
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#4, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#4");
     Ok(())
 }
 
@@ -438,7 +429,7 @@ fn test_consumer_formula_without_grid_meter_no_telemetry_meter_children() -> Res
     let graph = builder.build(None)?;
     // Meter #4 has no reading; its reporting child meter #5 is summed in its
     // place.
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#5, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#5");
     Ok(())
 }
 
@@ -667,7 +658,7 @@ fn test_consumer_formula_no_telemetry_shared_descendant() -> Result<(), Error> {
     builder.connect(sibling, shared);
 
     let graph = builder.build(None)?;
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#5, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#5");
     Ok(())
 }
 
@@ -814,10 +805,7 @@ fn test_consumer_formula_mixed_meter_with_component_submeter() -> Result<(), Err
     // components still report.
     assert_eq!(
         formula,
-        concat!(
-            "MAX(#1 - COALESCE(#2, COALESCE(#6, 0.0) + COALESCE(#3, #4, 0.0)) - ",
-            "COALESCE(#7, #8, 0.0), 0.0)"
-        )
+        "#1 - COALESCE(#2, COALESCE(#6, 0.0) + COALESCE(#3, #4, 0.0)) - COALESCE(#7, #8, 0.0)"
     );
 
     Ok(())
@@ -857,7 +845,7 @@ fn test_consumer_formula_with_grid_meter_subtracts_an_outside_fed_chain_once() -
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#3 + #4 - #8, #6, 0.0), 0.0)"
+        "#1 - COALESCE(#3 + #4 - #8, #6, 0.0)"
     );
 
     Ok(())
@@ -897,7 +885,7 @@ fn test_consumer_formula_with_grid_meter_subtracts_every_chain_under_a_replaced_
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#2 + #3 - #8, COALESCE(#4, 0.0) + COALESCE(#6, 0.0)), 0.0)"
+        "#1 - COALESCE(#2 + #3 - #8, COALESCE(#4, 0.0) + COALESCE(#6, 0.0))"
     );
 
     Ok(())
@@ -934,7 +922,7 @@ fn test_consumer_formula_with_grid_meter_resolves_every_overlap() -> Result<(), 
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#2 + #5 - #6, #3, 0.0) - COALESCE(#7 + #10 - #11, #8, 0.0), 0.0)"
+        "#1 - COALESCE(#2 + #5 - #6, #3, 0.0) - COALESCE(#7 + #10 - #11, #8, 0.0)"
     );
 
     Ok(())
@@ -970,7 +958,7 @@ fn test_consumer_formula_with_grid_meter_keeps_the_meter_of_a_silent_chain() -> 
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#2, 0.0), 0.0)"
+        "#1 - COALESCE(#2, 0.0)"
     );
 
     Ok(())
@@ -1009,7 +997,7 @@ fn test_consumer_formula_with_grid_meter_emits_no_term_for_a_wholly_silent_chain
     builder.connect(grid_meter, load);
 
     let graph = builder.build(None)?;
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#1, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#1");
 
     Ok(())
 }
@@ -1042,7 +1030,7 @@ fn test_consumer_formula_with_grid_meter_subtracts_a_silently_fed_chain_by_its_r
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#4, 0.0), 0.0)"
+        "#1 - COALESCE(#4, 0.0)"
     );
 
     Ok(())
@@ -1077,7 +1065,7 @@ fn test_consumer_formula_with_grid_meter_replaces_a_silent_meter_that_still_read
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 - COALESCE(#4, 0.0) - COALESCE(#5, 0.0), 0.0)"
+        "#1 - COALESCE(#4, 0.0) - COALESCE(#5, 0.0)"
     );
 
     Ok(())
@@ -1111,7 +1099,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_battery_chain() -> Result<(), E
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#2 - COALESCE(#3, #4, 0.0), 0.0)"
+        "#2 - COALESCE(#3, #4, 0.0)"
     );
 
     // Without fallbacks the chain is subtracted through its meter alone.
@@ -1120,10 +1108,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_battery_chain() -> Result<(), E
             .disable_fallback_components(true)
             .build(),
     ))?;
-    assert_eq!(
-        no_fallback.consumer_formula()?.to_string(),
-        "MAX(#2 - #3, 0.0)"
-    );
+    assert_eq!(no_fallback.consumer_formula()?.to_string(), "#2 - #3");
 
     Ok(())
 }
@@ -1164,7 +1149,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_chain_per_feeder() -> Result<()
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 + #5 - COALESCE(#2, #3, 0.0) - COALESCE(#6, #7, 0.0), 0.0)"
+        "#1 + #5 - COALESCE(#2, #3, 0.0) - COALESCE(#6, #7, 0.0)"
     );
 
     Ok(())
@@ -1190,7 +1175,7 @@ fn test_consumer_formula_no_grid_meter_keeps_chain_outside_the_sum() -> Result<(
 
     let graph = builder.build(None)?;
     // #1 is a PV chain, but it sits outside every feeder meter.
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#2, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#2");
 
     Ok(())
 }
@@ -1223,7 +1208,7 @@ fn test_consumer_formula_no_grid_meter_keeps_chain_with_an_outside_feed() -> Res
     builder.connect(feeder, load);
 
     let graph = builder.build(None)?;
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#1, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#1");
 
     Ok(())
 }
@@ -1257,7 +1242,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_shared_chain_once() -> Result
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#2 + #3 - COALESCE(#4, #5, 0.0), 0.0)"
+        "#2 + #3 - COALESCE(#4, #5, 0.0)"
     );
 
     Ok(())
@@ -1293,9 +1278,9 @@ fn test_consumer_formula_no_grid_meter_subtracts_every_chain_kind() -> Result<()
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#2 - COALESCE(#3, #4, 0.0) - COALESCE(#6, #7, 0.0) \
+        "#2 - COALESCE(#3, #4, 0.0) - COALESCE(#6, #7, 0.0) \
          - COALESCE(#8, #9, 0.0) - COALESCE(#10, #11, 0.0) \
-         - COALESCE(#12, #13, 0.0) - COALESCE(#14, #15, 0.0), 0.0)"
+         - COALESCE(#12, #13, 0.0) - COALESCE(#14, #15, 0.0)"
     );
 
     Ok(())
@@ -1325,7 +1310,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_an_unmetered_chain() -> Result<
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#2 - COALESCE(#3, 0.0), 0.0)"
+        "#2 - COALESCE(#3, 0.0)"
     );
 
     Ok(())
@@ -1364,7 +1349,7 @@ fn test_consumer_formula_no_grid_meter_keeps_silently_fed_chain() -> Result<(), 
     builder.connect(inverter, battery);
 
     let graph = builder.build(None)?;
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#2, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#2");
 
     Ok(())
 }
@@ -1399,7 +1384,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_mixed_meter_once() -> Result<()
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#2 - COALESCE(#3, COALESCE(#7, 0.0) + COALESCE(#4, #5, 0.0)), 0.0)"
+        "#2 - COALESCE(#3, COALESCE(#7, 0.0) + COALESCE(#4, #5, 0.0))"
     );
 
     Ok(())
@@ -1439,7 +1424,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_meter_measured_chain() -> Res
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - COALESCE(#5, 0.0), 0.0)"
+        "#3 + #4 - COALESCE(#5, 0.0)"
     );
 
     // Without fallbacks the term is the inverter's own reading to begin
@@ -1449,10 +1434,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_meter_measured_chain() -> Res
             .disable_fallback_components(true)
             .build(),
     ))?;
-    assert_eq!(
-        no_fallback.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - #5, 0.0)"
-    );
+    assert_eq!(no_fallback.consumer_formula()?.to_string(), "#3 + #4 - #5");
 
     Ok(())
 }
@@ -1496,7 +1478,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_cancelling_chain_and_a_plain_
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - COALESCE(#5, 0.0) - COALESCE(#8, #9, 0.0), 0.0)"
+        "#3 + #4 - COALESCE(#5, 0.0) - COALESCE(#8, #9, 0.0)"
     );
 
     Ok(())
@@ -1537,7 +1519,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_covered_group_by_its_own_read
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - COALESCE(#5, 0.0) - COALESCE(#7, 0.0), 0.0)"
+        "#3 + #4 - COALESCE(#5, 0.0) - COALESCE(#7, 0.0)"
     );
 
     Ok(())
@@ -1581,7 +1563,7 @@ fn test_consumer_formula_no_grid_meter_keeps_a_chain_that_reports_nothing() -> R
     // out, so its draw stays in Meter:3's reading.
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - 0.0 - COALESCE(#7, 0.0), 0.0)"
+        "#3 + #4 - 0.0 - COALESCE(#7, 0.0)"
     );
 
     Ok(())
@@ -1625,7 +1607,7 @@ fn test_consumer_formula_no_grid_meter_refuses_a_partly_off_limits_diamond() -> 
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - COALESCE(#7, 0.0), 0.0)"
+        "#3 + #4 - COALESCE(#7, 0.0)"
     );
 
     Ok(())
@@ -1670,7 +1652,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_an_outside_fed_chain_once() -> 
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#3 + #4 - COALESCE(#7, 0.0), 0.0)"
+        "#3 + #4 - COALESCE(#7, 0.0)"
     );
 
     Ok(())
@@ -1710,10 +1692,7 @@ fn test_consumer_formula_no_grid_meter_subtracts_a_partly_held_chain_through_its
     builder.connect(grid, pv);
 
     let graph = builder.build(None)?;
-    assert_eq!(
-        graph.consumer_formula()?.to_string(),
-        "MAX(#1 + #7 - #2, 0.0)"
-    );
+    assert_eq!(graph.consumer_formula()?.to_string(), "#1 + #7 - #2");
 
     Ok(())
 }
@@ -1761,7 +1740,7 @@ fn test_consumer_formula_no_grid_meter_keeps_an_uncovered_chain_under_a_replaced
     let graph = builder.build(None)?;
     assert_eq!(
         graph.consumer_formula()?.to_string(),
-        "MAX(#1 + #2 - COALESCE(#5, 0.0), 0.0)"
+        "#1 + #2 - COALESCE(#5, 0.0)"
     );
 
     Ok(())
@@ -1797,7 +1776,7 @@ fn test_consumer_formula_sums_reporting_meters_under_a_silent_grid_meter() -> Re
         graph.grid_formula()?.to_string(),
         "#5 + COALESCE(#2, #3, 0.0)"
     );
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#5, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#5");
 
     Ok(())
 }
@@ -1835,7 +1814,7 @@ fn test_consumer_formula_descends_past_a_silent_grid_meter() -> Result<(), Error
         graph.grid_formula()?.to_string(),
         "#1 + #6 + COALESCE(#3, #4, 0.0)"
     );
-    assert_eq!(graph.consumer_formula()?.to_string(), "MAX(#1 + #6, 0.0)");
+    assert_eq!(graph.consumer_formula()?.to_string(), "#1 + #6");
 
     Ok(())
 }

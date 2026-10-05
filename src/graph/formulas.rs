@@ -27,6 +27,11 @@ where
     E: Edge,
 {
     /// Returns the consumer formula for the graph.
+    ///
+    /// The result is not clamped, so it can be negative, for example when
+    /// unmodeled production is larger than the consumption. With
+    /// `include_phantom_loads_in_consumer_formula`, each of its terms is
+    /// clamped at zero instead.
     pub fn consumer_formula(&self) -> Result<Formula, Error> {
         generators::consumer::ConsumerFormulaBuilder::try_new(self)?.build()
     }
@@ -37,6 +42,9 @@ where
     }
 
     /// Returns the producer formula for the graph.
+    ///
+    /// The result is not clamped: a producer that draws power adds a positive
+    /// value, so the total can be positive.
     pub fn producer_formula(&self) -> Result<Formula, Error> {
         generators::producer::ProducerFormulaBuilder::try_new(self)?.build()
     }

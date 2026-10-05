@@ -29,9 +29,8 @@ where
     /// Generates the production formula.
     ///
     /// The production formula is the sum of all the PV and CHP components in
-    /// the graph, each measurement clamped so only production counts. Wind
-    /// turbines and steam boilers have per-category formulas of their own
-    /// and are not part of this sum.
+    /// the graph. Wind turbines and steam boilers have per-category formulas of
+    /// their own and are not part of this sum.
     pub fn build(self) -> Result<Formula, Error> {
         // One aggregation over the component set, so a component fed
         // through two meters — or shared between two PV meters — is
@@ -43,17 +42,11 @@ where
             petgraph::Direction::Outgoing,
             false,
         )?;
-        let mut expr = None;
-        for term in aggregate_terms(self.graph, targets, SourcePreference::ComponentsFirst)? {
-            let term = term.min(Expr::number(0.0));
-            expr = match expr {
-                None => Some(term),
-                Some(e) => Some(e + term),
-            };
-        }
-        Ok(expr
-            .map(Formula::new)
-            .unwrap_or_else(|| Formula::new(Expr::number(0.0))))
+        let expr = aggregate_terms(self.graph, targets, SourcePreference::ComponentsFirst)?
+            .into_iter()
+            .reduce(|sum, term| sum + term)
+            .unwrap_or_else(|| Expr::number(0.0));
+        Ok(Formula::new(expr))
     }
 }
 
@@ -81,7 +74,7 @@ mod tests {
         let formula = graph.producer_formula()?.to_string();
         assert_eq!(
             formula,
-            "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0)"
+            "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0))"
         );
 
         // Add a CHP meter to the grid with a CHP behind it.
@@ -93,8 +86,8 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0) + ",
-                "MIN(COALESCE(#6, #5, 0.0), 0.0)"
+                "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)) + ",
+                "COALESCE(#6, #5, 0.0)"
             )
         );
 
@@ -107,9 +100,9 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0) + ",
-                "MIN(COALESCE(#6, #5, 0.0), 0.0) + ",
-                "MIN(COALESCE(#7, 0.0), 0.0)"
+                "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#7, 0.0)"
             )
         );
 
@@ -122,10 +115,10 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0) + ",
-                "MIN(COALESCE(#6, #5, 0.0), 0.0) + ",
-                "MIN(COALESCE(#7, 0.0), 0.0) + ",
-                "MIN(COALESCE(#8, 0.0), 0.0)"
+                "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#7, 0.0) + ",
+                "COALESCE(#8, 0.0)"
             )
         );
 
@@ -138,18 +131,17 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0) + ",
-                "MIN(COALESCE(#6, #5, 0.0), 0.0) + ",
-                "MIN(COALESCE(#7, 0.0), 0.0) + ",
-                "MIN(COALESCE(#8, 0.0), 0.0)"
+                "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#7, 0.0) + ",
+                "COALESCE(#8, 0.0)"
             )
         );
 
         // Add a meter to the grid meter, that has a PV inverter and a CHP
-        // behind it. The pair is netted inside one clamp, like same-meter
-        // siblings of one category: per-component terms would fall back to
-        // `#12 - #14` and `#12 - #13`, which overstate production when one
-        // sibling consumes while the other produces.
+        // behind it. The pair is measured by one term, as same-meter siblings
+        // of one category are, so the meter's reading stands in for the pair
+        // even when neither component sends data.
         let meter = builder.meter();
         let pv_inverter = builder.solar_inverter();
         let chp = builder.chp();
@@ -162,11 +154,11 @@ mod tests {
         assert_eq!(
             formula,
             concat!(
-                "MIN(COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)), 0.0) + ",
-                "MIN(COALESCE(#6, #5, 0.0), 0.0) + ",
-                "MIN(COALESCE(#7, 0.0), 0.0) + ",
-                "MIN(COALESCE(#8, 0.0), 0.0) + ",
-                "MIN(COALESCE(#14 + #13, #12, COALESCE(#14, 0.0) + COALESCE(#13, 0.0)), 0.0)"
+                "COALESCE(#4 + #3, #2, COALESCE(#4, 0.0) + COALESCE(#3, 0.0)) + ",
+                "COALESCE(#6, #5, 0.0) + ",
+                "COALESCE(#7, 0.0) + ",
+                "COALESCE(#8, 0.0) + ",
+                "COALESCE(#14 + #13, #12, COALESCE(#14, 0.0) + COALESCE(#13, 0.0))"
             )
         );
 
@@ -198,7 +190,7 @@ mod tests {
         let graph = builder.build(None)?;
         assert_eq!(
             graph.producer_formula()?.to_string(),
-            "MIN(COALESCE(#3 + #4 + #5, COALESCE(#1, 0.0) + COALESCE(#2, 0.0)), 0.0)"
+            "COALESCE(#3 + #4 + #5, COALESCE(#1, 0.0) + COALESCE(#2, 0.0))"
         );
 
         Ok(())
@@ -225,10 +217,7 @@ mod tests {
         builder.connect(mixed_meter, ev);
 
         let graph = builder.build(None)?;
-        assert_eq!(
-            graph.producer_formula()?.to_string(),
-            "MIN(COALESCE(#3, 0.0), 0.0)"
-        );
+        assert_eq!(graph.producer_formula()?.to_string(), "COALESCE(#3, 0.0)");
 
         Ok(())
     }

@@ -99,7 +99,7 @@ where
             expr = expr - term;
         }
 
-        Ok(Formula::new(expr.max(Expr::number(0.0))))
+        Ok(Formula::new(expr))
     }
 
     /// The sum of the topmost reporting meters, minus the component chains
@@ -139,6 +139,6 @@ where
             expr = expr - term;
         }
 
-        Ok(Formula::new(expr.max(Expr::number(0.0))))
+        Ok(Formula::new(expr))
     }
 }
